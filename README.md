@@ -5,8 +5,10 @@ FastAPI service for the Orange Invest AI Engineer assignment.
 - **Phase 0:** project foundation, configuration, `GET /health`, tests.
 - **Phase 1:** typed incident and evidence schemas, plus five deterministic evidence
   tools over local synthetic data. No LLM calls.
+- **Phase 2:** a dependency-aware orchestration engine (asyncio): concurrent tasks,
+  bounded retries and timeouts, budgets, and partial-completion reporting. No LLM calls.
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the layout,
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the layout and the engine lifecycle,
 [docs/TOOLS.md](docs/TOOLS.md) for the tool contracts and failure handling, and
 [data/README.md](data/README.md) for the fixture data.
 
