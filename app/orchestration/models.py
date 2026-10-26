@@ -67,6 +67,9 @@ class TaskSpec(StrictModel):
     dependency_policy: DependencyPolicy = DependencyPolicy.REQUIRE_SUCCESS
     # If a required task does not succeed, the investigation is FAILED rather than partially complete.
     required: bool = False
+    # A finalizer starts only after every non-finalizer task has finished (including follow-ups
+    # added later) and receives a snapshot of all tasks. No task may depend on a finalizer.
+    finalizer: bool = False
 
     @field_validator("depends_on")
     @classmethod
@@ -91,6 +94,12 @@ class TaskErrorCode(StrEnum):
     TIMEOUT = "timeout"
     UNAVAILABLE = "unavailable"
     DATA_UNAVAILABLE = "data_unavailable"
+    # Reported by agent handlers about the language model (see app.llm.LLMErrorKind).
+    MODEL_TIMEOUT = "model_timeout"
+    MODEL_RATE_LIMITED = "model_rate_limited"
+    MODEL_UNAVAILABLE = "model_unavailable"
+    MODEL_REJECTED = "model_rejected"
+    MODEL_INVALID_OUTPUT = "model_invalid_output"
     # Reported by handlers or the engine.
     INVALID_INPUT = "invalid_input"
     HANDLER_ERROR = "handler_error"
@@ -372,7 +381,7 @@ class Investigation(StateModel):
     @computed_field
     @property
     def evidence(self) -> list[EvidenceRef]:
-        return [_evidence_ref(t) for t in self.tasks.values() if t.spec.kind == EVIDENCE_TASK_KIND]
+        return [evidence_ref(t) for t in self.tasks.values() if t.spec.kind == EVIDENCE_TASK_KIND]
 
     def log(self, kind: EventKind, task_id: str | None = None, detail: str = "") -> None:
         self.events.append(InvestigationEvent(at=utcnow(), kind=kind, task_id=task_id, detail=detail))
@@ -396,7 +405,8 @@ class Investigation(StateModel):
         self.log(EventKind.INVESTIGATION_FINISHED, detail=f"{status}: {reason}")
 
 
-def _evidence_ref(task: TaskRecord) -> EvidenceRef:
+def evidence_ref(task: TaskRecord) -> EvidenceRef:
+    """Summarise what an evidence task obtained (see EvidenceOutcome)."""
     evidence = task.output.evidence if task.output else None
     if evidence is not None:
         outcome = _EVIDENCE_OUTCOMES[evidence.status]

@@ -21,6 +21,7 @@ import time
 from collections.abc import Mapping
 from uuid import uuid4
 
+from app.core.redaction import redact
 from app.orchestration.handlers import TaskContext, TaskFailure, TaskHandler
 from app.orchestration.models import (
     AttemptOutcome,
@@ -160,6 +161,8 @@ class _Run:
             return True
         if not all(d.status.is_terminal for d in deps):
             return False
+        if spec.finalizer and not all(t.status.is_terminal for t in self.inv.tasks.values() if not t.spec.finalizer):
+            return False
         if self.inv.attempts_used >= self.limits.max_total_attempts:
             self.limit_reason = self.limit_reason or TerminationReason.ATTEMPT_BUDGET_EXHAUSTED
             record.skip(
@@ -262,6 +265,11 @@ class _Run:
             task=spec,
             attempt=number,
             dependencies={d: self.inv.tasks[d].model_copy(deep=True) for d in spec.depends_on},
+            all_tasks=(
+                {tid: t.model_copy(deep=True) for tid, t in self.inv.tasks.items() if tid != spec.task_id}
+                if spec.finalizer
+                else {}
+            ),
         )
         started_at, t0 = utcnow(), time.perf_counter()
         output: TaskOutput | None = None
@@ -327,7 +335,11 @@ class _Run:
         if not new:
             return None
         try:
-            validate_task_graph(new, existing=self.inv.tasks.keys())
+            validate_task_graph(
+                new,
+                existing=self.inv.tasks.keys(),
+                existing_finalizers=[tid for tid, t in self.inv.tasks.items() if t.spec.finalizer],
+            )
             unknown = sorted({s.kind for s in new} - self.handlers.keys())
             if unknown:
                 raise ValueError(f"no handler registered for task kind(s): {unknown}")
@@ -353,5 +365,6 @@ class _Run:
 
 
 def _describe(exc: BaseException) -> str:
-    text = f"{type(exc).__name__}: {exc}"
+    # Exception text can carry request details or credentials (e.g. from an SDK); redact before storing.
+    text = redact(f"{type(exc).__name__}: {exc}")
     return text if len(text) <= _MAX_ERROR_MESSAGE else text[: _MAX_ERROR_MESSAGE - 3] + "..."

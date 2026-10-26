@@ -440,3 +440,65 @@ def test_every_task_ends_terminal_and_handlers_match_attempts():
     assert all(t.status.is_terminal for t in inv.tasks.values())
     assert {tid: len(t.attempts) for tid, t in inv.tasks.items() if t.attempts} == dict(scripted.calls)
     assert inv.attempts_used == sum(scripted.calls.values())
+
+
+# --- Finalizer tasks (added in Phase 3) ----------------------------------------------------------
+
+
+def test_finalizer_runs_after_all_tasks_including_follow_ups():
+    seen = {}
+
+    async def plan_more(ctx: TaskContext) -> TaskOutput:
+        return TaskOutput(follow_up_tasks=[task("late", ctx.task.task_id)])
+
+    async def finalize(ctx: TaskContext) -> TaskOutput:
+        seen.update({tid: rec.status for tid, rec in ctx.all_tasks.items()})
+        return TaskOutput()
+
+    inv, _ = run(
+        [task("final", kind="final", finalizer=True), task("seed", kind="more"), task("b", script=["permanent"])],
+        {"more": plan_more, "final": finalize, "scripted": Scripted()},
+    )
+
+    assert seen == {"seed": TaskStatus.SUCCEEDED, "late": TaskStatus.SUCCEEDED, "b": TaskStatus.FAILED}
+    assert inv.tasks["final"].started_at >= max(t.finished_at for tid, t in inv.tasks.items() if tid != "final")
+
+
+def test_non_finalizers_do_not_receive_the_full_snapshot():
+    seen = {}
+
+    async def look(ctx: TaskContext) -> TaskOutput:
+        seen[ctx.task.task_id] = dict(ctx.all_tasks)
+        return TaskOutput()
+
+    run([task("a", kind="look"), task("b", "a", kind="look")], {"look": look})
+
+    assert seen == {"a": {}, "b": {}}
+
+
+def test_depending_on_a_finalizer_is_rejected():
+    with pytest.raises(ValueError, match="cannot depend on finalizer"):
+        InvestigationPlan(tasks=[task("f", finalizer=True), task("a", "f")])
+
+    async def bad(ctx: TaskContext) -> TaskOutput:
+        return TaskOutput(follow_up_tasks=[task("x", "f")])
+
+    inv, _ = run([task("f", finalizer=True), task("a", kind="bad")], {"bad": bad, "scripted": Scripted()})
+    assert inv.tasks["a"].error.code is TaskErrorCode.INVALID_FOLLOW_UP
+
+
+def test_finalizer_is_skipped_when_the_deadline_passes():
+    inv, _ = run([task("stuck", script=["hang"], timeout_seconds=60), task("final", finalizer=True)], deadline_seconds=0.1)
+
+    assert inv.tasks["final"].status is TaskStatus.SKIPPED
+    assert inv.termination_reason is TerminationReason.DEADLINE_EXCEEDED
+
+
+def test_handler_error_messages_are_redacted():
+    async def leaky(ctx: TaskContext) -> TaskOutput:
+        raise RuntimeError("Incorrect API key provided: sk-proj-abcdefghijklmnop0123")
+
+    inv, _ = run([task("a", kind="leaky")], {"leaky": leaky})
+
+    assert "sk-proj-abcdefghijklmnop0123" not in inv.tasks["a"].error.message
+    assert "[REDACTED]" in inv.tasks["a"].error.message

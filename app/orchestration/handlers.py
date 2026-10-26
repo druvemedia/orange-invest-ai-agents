@@ -7,7 +7,7 @@ error is ``retryable``. Any other exception is treated as a non-retryable bug.
 
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from app.orchestration.models import (
@@ -31,6 +31,8 @@ class TaskContext:
     attempt: int
     # Copies of the finished dependency records, keyed by task ID. Changing them has no effect.
     dependencies: Mapping[str, TaskRecord]
+    # Finalizer tasks only: copies of every task in the investigation. Empty for other tasks.
+    all_tasks: Mapping[str, TaskRecord] = field(default_factory=dict)
 
 
 class TaskFailure(Exception):
