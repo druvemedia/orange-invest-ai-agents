@@ -1,0 +1,3 @@
+{"source": "metrics", "service": "fraud-check", "start": "2026-10-20T13:00:00Z", "end": "2026-10-20T16:00:00Z", "reason": "Vendor metrics export delayed; no fraud-check latency data for this window."}
+{"source": "changes", "service": "fraud-check", "start": "2026-01-01T00:00:00Z", "end": "2027-01-01T00:00:00Z", "reason": "Third-party service; its deployment and configuration history is not visible to us."}
+{"source": "logs", "service": "web-frontend", "start": "2026-10-24T17:45:00Z", "end": "2026-10-24T18:30:00Z", "reason": "Log shipper backlog; web-frontend logs in this window were not ingested."}

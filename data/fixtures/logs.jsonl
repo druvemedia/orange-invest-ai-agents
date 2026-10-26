@@ -1,0 +1,37 @@
+{"timestamp": "2026-10-20T13:30:00Z", "service": "notification-service", "level": "INFO", "message": "Dispatched 412 order confirmation emails"}
+{"timestamp": "2026-10-20T13:45:00Z", "service": "payments-api", "level": "INFO", "message": "Health check OK"}
+{"timestamp": "2026-10-20T13:52:30Z", "service": "payments-api", "level": "INFO", "message": "Starting payments-api v2.14.0"}
+{"timestamp": "2026-10-20T13:55:20Z", "service": "payments-api", "level": "INFO", "message": "Config reloaded: db.pool.max_size=20"}
+{"timestamp": "2026-10-20T14:01:12Z", "service": "payments-api", "level": "WARNING", "message": "Slow response from fraud-check: 1850ms", "trace_id": "tr-a101"}
+{"timestamp": "2026-10-20T14:02:40Z", "service": "payments-api", "level": "ERROR", "message": "Timed out waiting for DB connection from pool after 3000ms", "trace_id": "tr-a102"}
+{"timestamp": "2026-10-20T14:03:05Z", "service": "payments-api", "level": "ERROR", "message": "Request to fraud-check timed out after 2000ms; retrying (attempt 2/3)", "trace_id": "tr-a103"}
+{"timestamp": "2026-10-20T14:03:07Z", "service": "payments-api", "level": "ERROR", "message": "Request to fraud-check timed out after 2000ms; retrying (attempt 3/3)", "trace_id": "tr-a103"}
+{"timestamp": "2026-10-20T14:03:09Z", "service": "payments-api", "level": "ERROR", "message": "Payment authorization failed: upstream timeout", "trace_id": "tr-a103"}
+{"timestamp": "2026-10-20T14:03:10Z", "service": "api-gateway", "level": "ERROR", "message": "Upstream payments-api returned 504 for POST /checkout/pay", "trace_id": "tr-a103"}
+{"timestamp": "2026-10-20T14:06:00Z", "service": "payments-api", "level": "ERROR", "message": "Timed out waiting for DB connection from pool after 3000ms", "trace_id": "tr-a104"}
+{"timestamp": "2026-10-20T14:08:00Z", "service": "payments-api", "level": "WARNING", "message": "Connection pool saturated: 20/20 in use, 37 waiting"}
+{"timestamp": "2026-10-20T14:10:00Z", "service": "postgres-payments", "level": "INFO", "message": "checkpoint complete: wrote 1204 buffers"}
+{"timestamp": "2026-10-20T14:12:30Z", "service": "payments-api", "level": "ERROR", "message": "Request to fraud-check timed out after 2000ms; retrying (attempt 2/3)", "trace_id": "tr-a105"}
+{"timestamp": "2026-10-20T14:15:00Z", "service": "orders-service", "level": "INFO", "message": "Order ORD-88123 created"}
+{"timestamp": "2026-10-20T14:20:00Z", "service": "payments-api", "level": "ERROR", "message": "Timed out waiting for DB connection from pool after 3000ms", "trace_id": "tr-a106"}
+{"timestamp": "2026-10-20T14:25:00Z", "service": "api-gateway", "level": "ERROR", "message": "Upstream payments-api returned 504 for POST /checkout/pay", "trace_id": "tr-a107"}
+{"timestamp": "2026-10-20T14:30:00Z", "service": "postgres-payments", "level": "INFO", "message": "checkpoint complete: wrote 988 buffers"}
+{"timestamp": "2026-10-22T08:40:00Z", "service": "inventory-service", "level": "INFO", "message": "Batch reservation worker started (rollout 10%)"}
+{"timestamp": "2026-10-22T08:55:30Z", "service": "inventory-service", "level": "INFO", "message": "Feature flag inventory.batch_reservations updated: 10% -> 100%"}
+{"timestamp": "2026-10-22T09:04:00Z", "service": "orders-service", "level": "WARNING", "message": "Inventory reservation conflict (409) for SKU-1142; retrying", "trace_id": "tr-b201"}
+{"timestamp": "2026-10-22T09:05:00Z", "service": "inventory-service", "level": "WARNING", "message": "Lock wait timeout exceeded on table stock_reservations", "trace_id": "tr-b201"}
+{"timestamp": "2026-10-22T09:06:00Z", "service": "orders-service", "level": "ERROR", "message": "Order rejected: item unavailable (SKU-1142) after 3 reservation attempts", "trace_id": "tr-b201"}
+{"timestamp": "2026-10-22T09:08:00Z", "service": "inventory-service", "level": "INFO", "message": "Health check OK"}
+{"timestamp": "2026-10-22T09:10:00Z", "service": "inventory-service", "level": "WARNING", "message": "Lock wait timeout exceeded on table stock_reservations", "trace_id": "tr-b202"}
+{"timestamp": "2026-10-22T09:12:00Z", "service": "orders-service", "level": "ERROR", "message": "Order rejected: item unavailable (SKU-2210) after 3 reservation attempts", "trace_id": "tr-b202"}
+{"timestamp": "2026-10-22T09:15:00Z", "service": "postgres-inventory", "level": "WARNING", "message": "Deadlock detected; transaction aborted"}
+{"timestamp": "2026-10-22T09:20:00Z", "service": "orders-service", "level": "ERROR", "message": "Order rejected: item unavailable (SKU-0871) after 3 reservation attempts", "trace_id": "tr-b203"}
+{"timestamp": "2026-10-22T09:22:00Z", "service": "inventory-service", "level": "INFO", "message": "Health check OK"}
+{"timestamp": "2026-10-24T17:35:00Z", "service": "web-frontend", "level": "INFO", "message": "Served homepage in 410ms"}
+{"timestamp": "2026-10-24T17:40:00Z", "service": "web-frontend", "level": "INFO", "message": "Served homepage in 395ms"}
+{"timestamp": "2026-10-24T17:44:00Z", "service": "api-gateway", "level": "INFO", "message": "Request volume above daily average (campaign traffic tag: autumn-sale)"}
+{"timestamp": "2026-10-24T17:52:00Z", "service": "redis-cache", "level": "WARNING", "message": "Evicting keys: used_memory reached maxmemory (policy allkeys-lru)"}
+{"timestamp": "2026-10-24T18:05:00Z", "service": "redis-cache", "level": "WARNING", "message": "Evicting keys: used_memory reached maxmemory (policy allkeys-lru)"}
+{"timestamp": "2026-10-24T18:10:00Z", "service": "api-gateway", "level": "INFO", "message": "p95 upstream latency within SLO for all routes"}
+{"timestamp": "2026-10-24T18:35:00Z", "service": "web-frontend", "level": "WARNING", "message": "Session lookup slow (cache miss): 820ms"}
+{"timestamp": "2026-10-24T18:40:00Z", "service": "web-frontend", "level": "INFO", "message": "Served homepage in 1720ms"}
