@@ -55,11 +55,15 @@ def test_gold_labels_never_reach_the_investigation(monkeypatch, approach):
     for case in CASES:
         record, llm = asyncio.run(run_case(case, approach, HeuristicLLMClient, "test", AgentConfig(), BaselineConfig()))
         assert record.status != "failed"
-        sent = "\n".join(llm.inputs)
+        assert len(llm.instructions) == len(llm.inputs) == llm.call_count > 0
+        sent = "\n".join(llm.inputs + llm.instructions)  # everything sent to the model: prompts and inputs
         label = LABELS[case.case_id]
         for text in [label.rationale, "expected_outcome", "acceptable_alternatives", "inconclusive_acceptable",
                      *(([label.root_cause.summary, label.root_cause.label_id]) if label.root_cause else [])]:
             assert text not in sent, (case.case_id, approach, text[:40])
+        from tests.test_prompt_leakage import leaks
+        for instructions in set(llm.instructions):  # the prompts actually sent, not only the templates in the code
+            assert leaks(instructions) == [], (case.case_id, approach)
 
 
 def test_a_crashing_run_is_recorded_as_failed(monkeypatch):
@@ -82,14 +86,21 @@ def test_offline_results_are_labelled_as_not_measuring_llm_quality(offline):
     assert offline["aggregates"]["multi_agent"]["tokens"] is None  # never invented
 
 
-def test_live_mode_refuses_without_explicit_confirmation(monkeypatch, capsys):
+def test_live_mode_refuses_without_explicit_confirmation(clean_env, monkeypatch, capsys, tmp_path):
+    from app.core.config import Settings
+
     def no_calls(*args, **kwargs):
         raise AssertionError("a client must not be built without --confirm-billed")
 
     monkeypatch.setattr("app.llm.build_llm_client", no_calls)
+    # Hermetic: an explicitly configured, opted-in model, so only the missing --confirm-billed can stop the run.
+    monkeypatch.setattr(cli, "get_settings", lambda: Settings(
+        _env_file=None, llm_provider="openai", llm_model="gpt-4o-mini", llm_api_key="sk-test-not-a-real-key",
+        llm_allow_billed_calls=True))
 
-    assert cli.main(["live", "--cases", "EVAL-01"]) == 2
-    assert "Refusing to make billed calls" in capsys.readouterr().err
+    assert cli.main(["live", "--cases", "EVAL-01", "--max-cost-usd", "1", "--out", str(tmp_path / "new")]) == 2
+    assert "Refusing to make billed calls without --confirm-billed" in capsys.readouterr().err
+    assert not (tmp_path / "new").exists()
 
 
 def test_labels_are_loaded_only_after_every_investigation(monkeypatch):

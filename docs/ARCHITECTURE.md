@@ -381,6 +381,16 @@ with the exact query, records, completeness and warnings.
     traffic) on any service. With no request-rate data, the rule does nothing.
   - **Noise floor.** The smallest-step noise floor uses only the middle half of the baseline, so one boundary sample
     that already shows the incident cannot hide a change.
+  - **Evidence verification** (`grounding.check_citations`, for both approaches):
+    - a hypothesis that names a retrieved change by id, without negating it, cites that change record;
+    - a WARNING/ERROR/CRITICAL log sharing at least two mechanism terms with the hypothesis is not counted
+      against it, and code does not count it as support either;
+    - evidence cited both for and against counts as neither;
+    - a metric sample that fell is moved against a claimed increase of that metric. Decreases and magnitudes are
+      not checked: "pool size reduced" would wrongly match a pool-utilisation rise.
+  - **What verification cannot do.** These are keyword and structure rules. A log's meaning, whether a change
+    caused anything, and service relevance (assessed, not enforced) stay judgements. The rules were drawn from
+    run 4's failure, and counterexample tests guard them; no new real-model run has used them.
 - **Model citation errors are not corrected.** Code checks what a citation *is* (its class, timing and source), not
   what it *means*. In run 4 the model filed log lines that support its leading hypothesis as evidence against it, and
   the adjudication stayed inconclusive.

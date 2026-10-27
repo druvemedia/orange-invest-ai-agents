@@ -9,7 +9,8 @@ from app.evaluation.dataset import EvidenceMatcher, GoldLabel, Pattern, RootCaus
 from app.evaluation.normalize import UNUSABLE, NormalizedHypothesis, RunRecord
 from app.schemas.common import StrictModel
 
-Outcome = Literal["correct", "correct_inconclusive", "acceptable_inconclusive", "missed_inconclusive", "wrong_conclusion", "failed"]
+Outcome = Literal["correct", "correct_inconclusive", "acceptable_inconclusive", "missed_inconclusive", "wrong_conclusion",
+                  "failed", "not_run"]
 
 STOPWORDS = frozenset(
     "the a an and or of to in on for with from by at is was were be been are this that these those it its as "
@@ -64,8 +65,10 @@ def score(run: RunRecord, label: GoldLabel) -> CaseScore:
     top_label = matched_label(top, label) if top else None
     has_gold = label.root_cause is not None
 
-    if run.status == "failed":
-        outcome: Outcome = "failed"
+    if run.status == "not_run":
+        outcome: Outcome = "not_run"
+    elif run.status == "failed":
+        outcome = "failed"
     elif label.expected_outcome == "inconclusive":
         outcome = "correct_inconclusive" if run.conclusion == "inconclusive" else "wrong_conclusion"
     elif run.conclusion == "probable_cause_identified":
@@ -165,6 +168,11 @@ def _rate(values: list[bool]) -> float | None:
     return round(sum(values) / len(values), 3) if values else None
 
 
+def _count(values: list[bool]) -> dict:
+    """Numerator and denominator, so a rate is never shown without what it was computed over."""
+    return {"n": sum(values), "of": len(values)}
+
+
 def _mean(values: list[float]) -> float | None:
     return round(statistics.fmean(values), 3) if values else None
 
@@ -176,9 +184,29 @@ def aggregate(runs: list[RunRecord], scores: list[CaseScore]) -> dict:
     cited = sum(x.cited for x in g)
     latencies = [r.latency_seconds for r in runs]
     tokens_known = [r for r in runs if r.input_tokens is not None]
+    priced = [r for r in runs if r.estimated_cost_usd is not None]
     gold = [s for s in scores if s.top1_match is not None]
+    assessed = sum(r.assessed_supporting_refs for r in runs)
+    unsupported = sum(r.unsupported_supporting_refs for r in runs)
     return {
         "cases": len(runs),
+        "runs_completed": sum(1 for r in runs if r.status in ("completed", "fallback")),
+        "runs_not_run": sum(1 for r in runs if r.status == "not_run"),
+        "counts": {
+            "strict": _count([s.strict_correct for s in scores]),
+            "lenient": _count([s.lenient_correct for s in scores]),
+            "wrong_conclusion": _count([s.outcome == "wrong_conclusion" for s in scores]),
+            "failed": _count([s.outcome == "failed" for s in scores]),
+            "inconclusive": _count([s.outcome.endswith("inconclusive") for s in scores]),
+            "top1": _count([bool(s.top1_match) for s in gold]),
+            "top3": _count([bool(s.top3_match) for s in gold]),
+        },
+        "unsupported_support": {"unsupported": unsupported, "assessed": assessed,
+                                "rate": round(unsupported / assessed, 3) if assessed else None},
+        "evidence_gaps_total": sum(r.evidence_gaps for r in runs),
+        "timeouts_total": sum(r.timeouts for r in runs),
+        "cost_usd": ({"runs_priced": len(priced), "total": round(sum(r.estimated_cost_usd for r in priced), 4),
+                      "mean": round(statistics.fmean(r.estimated_cost_usd for r in priced), 4)} if priced else None),
         "strict_accuracy": _rate([s.strict_correct for s in scores]),
         "lenient_accuracy": _rate([s.lenient_correct for s in scores]),
         "wrong_conclusion_rate": _rate([s.outcome == "wrong_conclusion" for s in scores]),

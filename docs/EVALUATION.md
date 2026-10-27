@@ -10,6 +10,8 @@
 | Grounding rules | references must have been shown; failed evidence is never support; evidence classes, citation checks and confidence cap; inventory-validated limitations; facts vs interpretations | same code (`report_rules.finalize_report`, `apply_citation_checks`, `cap_confidence`, `SHARED_RULES`) |
 | Conclusion rule | `adjudicate` (Phase 6): leader ≥ medium and strictly ahead, direct support from ≥ 2 sources, no material contradiction, no comparable alternative, requested follow-ups obtained, and a completed critic review | the same checks, minus the review check (there is no critic) |
 | Budgets | ≤ 40 tasks, 2 attempts per agent task, 2 critic rounds, 3 requests per round, deadline 300 s | ≤ 6 steps, ≤ 14 tool calls (≤ 6 per step), 2 attempts per step, same per-step timeout and deadline |
+| Evidence verification | named changes cited, mechanism-consistent failure logs not counted against, both-ways citations dropped, metric direction checked, per-citation assessment (`grounding.check_citations`, `assess_citations`) | same code |
+| Most model requests per investigation | 16: 8 agent tasks × 2 attempts | 12: 6 steps × 2 attempts |
 | Output | `ReportOutput` | `ReportOutput` (the same contract) |
 
 The baseline is a genuine agent, not a one-shot prompt: it plans, calls tools, sees the results, follows up and
@@ -24,14 +26,43 @@ reports. Known asymmetries:
 ## Running
 
 ```zsh
-python -m app.evaluation offline                     # free, deterministic; writes evaluation_results/offline-heuristic/
-python -m app.evaluation live --confirm-billed        # real model calls (billed); writes evaluation_results/live/
-python -m app.evaluation live --confirm-billed --cases EVAL-01,EVAL-09 --approach single_agent
+python -m app.evaluation offline                                     # free, deterministic; writes evaluation_results/offline-heuristic/
+LLM_PROVIDER=openai LLM_MODEL=gpt-4o-mini python -m app.evaluation live --max-cost-usd 1 --preflight-only   # plan only, no calls
+LLM_ALLOW_BILLED_CALLS=true python -m app.evaluation live --max-cost-usd 1 --confirm-billed                 # billed
 ```
 
-Without `--confirm-billed`, live mode prints the scope (the number of investigations) and the only measured usage
-figure (one multi-agent run, about 55k input / 5.7k output tokens, 104 s), then exits with code 2 without making a
-request. Runs are sequential, with a fresh client per run so token usage is attributed to that run.
+**Live mode safeguards.** Live mode has never been run. It requires all three of the following:
+- **`LLM_ALLOW_BILLED_CALLS=true`**: the same guard as the API and CLI.
+- **`--confirm-billed`**.
+- **`--max-cost-usd`**: the budget.
+
+**Before any call**, a preflight prints:
+- the number of investigations (10 cases × 2 approaches);
+- the most model requests each can make: 16 for the multi-agent system and 12 for the baseline, with default
+  limits;
+- the worst-case cost, assuming every request uses the full 64,000-token input budget and 4,000-token output limit;
+- a rough expected cost.
+
+The expected cost is the mean of the four measured multi-agent runs (about $0.012), applied to every run. The
+baseline's real cost has never been measured.
+
+**When a live run refuses to start:**
+- the model has no recorded price (`app/evaluation/pricing.py`);
+- the budget is below the worst case of one investigation;
+- the output folder already exists.
+
+**During a live run:**
+- Runs are sequential, each case and approach exactly once; nothing is retried as a whole.
+- A run starts only if the estimated spend so far, plus that run's worst case, fits within the budget.
+- Unknown usage is charged at the worst case.
+- Runs not started are recorded as `not_run` and kept in every denominator.
+
+**Results** go to a new folder, `evaluation_results/live/<UTC timestamp>/`. Earlier results are never overwritten.
+Each folder gets a `README.md` with provenance (commit, model, limits, budget, spend, outcomes, limitations) and a
+`SHA256SUMS`.
+
+The worst-case cost holds only if the provider's per-request overhead stays within the input budget's allowances
+(`app/llm/openai_client.py`).
 
 **Offline mode** replaces the model with `HeuristicLLMClient`, a rule set shared by both approaches: the most recent
 change is the cause, otherwise the most frequent error. It exercises every code path deterministically. **Its scores
@@ -53,6 +84,10 @@ for each keyword group in `match_all`, at least one term occurs (case-insensitiv
 | `missed_inconclusive` | as above, but the label does not allow inconclusive |
 | `wrong_conclusion` | a probable cause is named but the top hypothesis does not match, or a cause is named when inconclusive is expected |
 | `failed` | no report: the run crashed |
+| `not_run` | the budget stop prevented the run; it stays in every denominator |
+
+Every rate in `report.md` is shown with its numerator and denominator, for example "40% (4/10)". Runs are all
+planned runs, including `failed` and `not_run`.
 
 - **Strict accuracy** = (`correct` + `correct_inconclusive`) / runs.
 - **Lenient accuracy** = strict + `acceptable_inconclusive`, divided by runs.
@@ -75,6 +110,11 @@ for each keyword group in `match_all`, at least one term occurs (case-insensitiv
   text shares at least one content word (four or more characters, not a stopword) with the hypothesis. This is a weak
   proxy for "the evidence supports the claim", and it can't judge meaning. Key-evidence recall is the stronger
   signal, and manual review of `results.json` is recommended for live runs.
+- **Unsupported supporting citations**: supporting citations of the report's hypotheses that code cannot verify
+  (`app.agents.grounding.assess_citations`). That means unknown references, missing evidence, metric samples
+  within their normal range, and records from a service that neither the incident nor the hypothesis involves (nor
+  their direct dependency neighbours). The count is shown against the number of supporting citations assessed.
+  Context-only support (interpretations, dependency edges) is assessed but not counted as unsupported.
 
 **Cost and speed**:
 - **Tool calls**: evidence-tool executions, including retries and failed calls.
@@ -82,11 +122,18 @@ for each keyword group in `match_all`, at least one term occurs (case-insensitiv
 - **Invalid outputs**: model outputs rejected by schema or grounding checks.
 - **Latency**: wall-clock seconds for the whole investigation (`perf_counter`), with runs sequential.
 - **Tokens**: input and output tokens as reported by the provider, summed per run. Shown as "n/a" when the client
-  reports none (offline), and never estimated.
+  reports none (offline), and never estimated. The report says how many runs reported usage.
+- **Estimated cost**: reported tokens × the recorded standard price (`app/evaluation/pricing.py`, with its source and
+  date). "n/a" when the model has no price or no usage was reported.
+- **Evidence gaps**: evidence results that failed, were never collected or are partial.
+- **Timeouts**: timed-out tool or model attempts and deadline stops. The termination reason is recorded per run.
+- **Configuration**: the model, its token and time limits, and both approaches' limits are recorded in `results.json`
+  and the report.
 
 ## Outputs
 
-`evaluation_results/<mode>/` holds three files:
+Offline results go to `evaluation_results/offline-heuristic/`. Live results go to a new
+`evaluation_results/live/<UTC timestamp>/`, which also holds `README.md` and `SHA256SUMS`. The three result files are:
 - `results.json`: meta, aggregates, per-run scores, normalised runs with evidence maps, and labels.
 - `per_case.csv`
 - `report.md`: aggregate table, per-case table and gold labels.
@@ -117,6 +164,10 @@ for each keyword group in `match_all`, at least one term occurs (case-insensitiv
 - **Phase 9** fixed two false-exclusion bugs in the timeline checks: a stray earlier error setting onset, and a
   rollback of an unrelated change counting as a revert. The rerun produced identical scores and per-case
   outcomes; only timestamps and latencies in the result files changed.
+- **The evidence-verification rules** (named changes, mechanism-consistent logs, both-ways citations, metric
+  direction) left every offline score and per-case outcome unchanged. Their effect was checked offline on live
+  run 4's recorded evidence: the leading hypothesis's direct support grew from one to two independent sources, and
+  nothing remained against it. That is a replay of recorded model output, not a new real-model measurement.
 - **Live results** would measure real models on 10 small, synthetic, author-written cases, one run each. That is
   enough to spot large differences, not small ones. The dataset author also wrote both systems, so case design may be
   unconsciously biased. Keyword matching can misjudge paraphrases; check `results.json` by hand.

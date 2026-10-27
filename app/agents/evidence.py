@@ -314,6 +314,15 @@ class RefIndex:
             return None, f"insufficient baseline ({len(head)} sample(s) {when})"
         return head, f"{len(head)} samples {when}"
 
+    def metric_delta(self, ref: str) -> float | None:
+        """Relative change of a metric sample from its series' baseline, or None (not a metric, or no baseline)."""
+        found = self._records.get(ref)
+        if not found or found[0] is not EvidenceSource.METRICS:
+            return None
+        r = found[1]
+        head, _ = self.metric_baseline(r["service"], r["metric_name"])
+        return metric_change(r["value"], _median(head)) if head else None
+
     def _classify_metric(self, r: dict[str, Any]) -> Classification:
         name = f"{r['service']} {r['metric_name']}"
         head, how = self.metric_baseline(r["service"], r["metric_name"])

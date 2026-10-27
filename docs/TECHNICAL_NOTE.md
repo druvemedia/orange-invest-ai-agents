@@ -44,7 +44,7 @@ Four billed gpt-4o-mini runs of EVAL-01 (about $0.01–0.02 each) all ranked the
 first, but none scored correct: three were inconclusive, and one concluded naming only the mechanism. Each exposed
 defects, fixed and tested offline. These are single observations, not a benchmark.
 
-**Verification.** 581 offline tests pass without network access; 35 real-browser UI checks passed earlier. Paid
+**Verification.** 626 offline tests pass without network access; 35 real-browser UI checks passed earlier. Paid
 calls need an explicit opt-in and a per-request input-token budget.
 
 **Limitations.**

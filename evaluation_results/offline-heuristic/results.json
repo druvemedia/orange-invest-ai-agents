@@ -2,7 +2,7 @@
   "meta": {
     "mode": "offline-heuristic",
     "model": null,
-    "generated_at": "2026-10-27T05:32:03+00:00",
+    "generated_at": "2026-10-27T08:53:18+00:00",
     "cases": [
       "EVAL-01",
       "EVAL-02",
@@ -50,11 +50,54 @@
       "evidence_attempts": 2,
       "evidence_timeout_seconds": 30.0,
       "deadline_seconds": 300.0
-    }
+    },
+    "model_config": null,
+    "pricing": null,
+    "budget": null
   },
   "aggregates": {
     "multi_agent": {
       "cases": 10,
+      "runs_completed": 10,
+      "runs_not_run": 0,
+      "counts": {
+        "strict": {
+          "n": 4,
+          "of": 10
+        },
+        "lenient": {
+          "n": 6,
+          "of": 10
+        },
+        "wrong_conclusion": {
+          "n": 0,
+          "of": 10
+        },
+        "failed": {
+          "n": 0,
+          "of": 10
+        },
+        "inconclusive": {
+          "n": 7,
+          "of": 10
+        },
+        "top1": {
+          "n": 5,
+          "of": 9
+        },
+        "top3": {
+          "n": 8,
+          "of": 9
+        }
+      },
+      "unsupported_support": {
+        "unsupported": 0,
+        "assessed": 43,
+        "rate": 0.0
+      },
+      "evidence_gaps_total": 6,
+      "timeouts_total": 0,
+      "cost_usd": null,
       "strict_accuracy": 0.4,
       "lenient_accuracy": 0.6,
       "wrong_conclusion_rate": 0.0,
@@ -65,7 +108,8 @@
         "acceptable_inconclusive": 2,
         "missed_inconclusive": 4,
         "wrong_conclusion": 0,
-        "failed": 0
+        "failed": 0,
+        "not_run": 0
       },
       "top1_hit_rate": 0.556,
       "top3_hit_rate": 0.889,
@@ -88,9 +132,9 @@
       },
       "invalid_outputs_total": 0,
       "latency_seconds": {
-        "mean": 0.01,
+        "mean": 0.012,
         "median": 0.011,
-        "max": 0.019
+        "max": 0.024
       },
       "tokens": null,
       "per_case_outcome": {
@@ -108,6 +152,46 @@
     },
     "single_agent": {
       "cases": 10,
+      "runs_completed": 10,
+      "runs_not_run": 0,
+      "counts": {
+        "strict": {
+          "n": 4,
+          "of": 10
+        },
+        "lenient": {
+          "n": 6,
+          "of": 10
+        },
+        "wrong_conclusion": {
+          "n": 0,
+          "of": 10
+        },
+        "failed": {
+          "n": 0,
+          "of": 10
+        },
+        "inconclusive": {
+          "n": 7,
+          "of": 10
+        },
+        "top1": {
+          "n": 5,
+          "of": 9
+        },
+        "top3": {
+          "n": 8,
+          "of": 9
+        }
+      },
+      "unsupported_support": {
+        "unsupported": 0,
+        "assessed": 43,
+        "rate": 0.0
+      },
+      "evidence_gaps_total": 6,
+      "timeouts_total": 0,
+      "cost_usd": null,
       "strict_accuracy": 0.4,
       "lenient_accuracy": 0.6,
       "wrong_conclusion_rate": 0.0,
@@ -118,7 +202,8 @@
         "acceptable_inconclusive": 2,
         "missed_inconclusive": 4,
         "wrong_conclusion": 0,
-        "failed": 0
+        "failed": 0,
+        "not_run": 0
       },
       "top1_hit_rate": 0.556,
       "top3_hit_rate": 0.889,
@@ -143,7 +228,7 @@
       "latency_seconds": {
         "mean": 0.005,
         "median": 0.005,
-        "max": 0.008
+        "max": 0.007
       },
       "tokens": null,
       "per_case_outcome": {
@@ -1496,9 +1581,15 @@
       "tool_calls": 5,
       "model_calls": 6,
       "invalid_outputs": 0,
-      "latency_seconds": 0.019,
+      "latency_seconds": 0.024,
       "input_tokens": null,
-      "output_tokens": null
+      "output_tokens": null,
+      "assessed_supporting_refs": 7,
+      "unsupported_supporting_refs": 0,
+      "evidence_gaps": 0,
+      "timeouts": 0,
+      "termination_reason": "all_tasks_succeeded",
+      "estimated_cost_usd": null
     },
     {
       "case_id": "EVAL-01",
@@ -2383,9 +2474,15 @@
       "tool_calls": 5,
       "model_calls": 2,
       "invalid_outputs": 0,
-      "latency_seconds": 0.008,
+      "latency_seconds": 0.007,
       "input_tokens": null,
-      "output_tokens": null
+      "output_tokens": null,
+      "assessed_supporting_refs": 7,
+      "unsupported_supporting_refs": 0,
+      "evidence_gaps": 0,
+      "timeouts": 0,
+      "termination_reason": "completed",
+      "estimated_cost_usd": null
     },
     {
       "case_id": "EVAL-02",
@@ -2993,7 +3090,13 @@
       "invalid_outputs": 0,
       "latency_seconds": 0.011,
       "input_tokens": null,
-      "output_tokens": null
+      "output_tokens": null,
+      "assessed_supporting_refs": 6,
+      "unsupported_supporting_refs": 0,
+      "evidence_gaps": 0,
+      "timeouts": 0,
+      "termination_reason": "all_tasks_succeeded",
+      "estimated_cost_usd": null
     },
     {
       "case_id": "EVAL-02",
@@ -3574,9 +3677,15 @@
       "tool_calls": 5,
       "model_calls": 2,
       "invalid_outputs": 0,
-      "latency_seconds": 0.005,
+      "latency_seconds": 0.006,
       "input_tokens": null,
-      "output_tokens": null
+      "output_tokens": null,
+      "assessed_supporting_refs": 6,
+      "unsupported_supporting_refs": 0,
+      "evidence_gaps": 0,
+      "timeouts": 0,
+      "termination_reason": "completed",
+      "estimated_cost_usd": null
     },
     {
       "case_id": "EVAL-03",
@@ -4368,9 +4477,15 @@
       "tool_calls": 5,
       "model_calls": 6,
       "invalid_outputs": 0,
-      "latency_seconds": 0.011,
+      "latency_seconds": 0.012,
       "input_tokens": null,
-      "output_tokens": null
+      "output_tokens": null,
+      "assessed_supporting_refs": 2,
+      "unsupported_supporting_refs": 0,
+      "evidence_gaps": 0,
+      "timeouts": 0,
+      "termination_reason": "all_tasks_succeeded",
+      "estimated_cost_usd": null
     },
     {
       "case_id": "EVAL-03",
@@ -5132,7 +5247,13 @@
       "invalid_outputs": 0,
       "latency_seconds": 0.005,
       "input_tokens": null,
-      "output_tokens": null
+      "output_tokens": null,
+      "assessed_supporting_refs": 2,
+      "unsupported_supporting_refs": 0,
+      "evidence_gaps": 0,
+      "timeouts": 0,
+      "termination_reason": "completed",
+      "estimated_cost_usd": null
     },
     {
       "case_id": "EVAL-04",
@@ -5892,9 +6013,15 @@
       "tool_calls": 5,
       "model_calls": 6,
       "invalid_outputs": 0,
-      "latency_seconds": 0.011,
+      "latency_seconds": 0.012,
       "input_tokens": null,
-      "output_tokens": null
+      "output_tokens": null,
+      "assessed_supporting_refs": 4,
+      "unsupported_supporting_refs": 0,
+      "evidence_gaps": 1,
+      "timeouts": 0,
+      "termination_reason": "all_tasks_succeeded",
+      "estimated_cost_usd": null
     },
     {
       "case_id": "EVAL-04",
@@ -6622,7 +6749,13 @@
       "invalid_outputs": 0,
       "latency_seconds": 0.005,
       "input_tokens": null,
-      "output_tokens": null
+      "output_tokens": null,
+      "assessed_supporting_refs": 4,
+      "unsupported_supporting_refs": 0,
+      "evidence_gaps": 1,
+      "timeouts": 0,
+      "termination_reason": "completed",
+      "estimated_cost_usd": null
     },
     {
       "case_id": "EVAL-05",
@@ -7236,9 +7369,15 @@
       "tool_calls": 4,
       "model_calls": 6,
       "invalid_outputs": 0,
-      "latency_seconds": 0.008,
+      "latency_seconds": 0.009,
       "input_tokens": null,
-      "output_tokens": null
+      "output_tokens": null,
+      "assessed_supporting_refs": 4,
+      "unsupported_supporting_refs": 0,
+      "evidence_gaps": 1,
+      "timeouts": 0,
+      "termination_reason": "all_tasks_succeeded",
+      "estimated_cost_usd": null
     },
     {
       "case_id": "EVAL-05",
@@ -7826,9 +7965,15 @@
       "tool_calls": 4,
       "model_calls": 2,
       "invalid_outputs": 0,
-      "latency_seconds": 0.004,
+      "latency_seconds": 0.005,
       "input_tokens": null,
-      "output_tokens": null
+      "output_tokens": null,
+      "assessed_supporting_refs": 4,
+      "unsupported_supporting_refs": 0,
+      "evidence_gaps": 1,
+      "timeouts": 0,
+      "termination_reason": "completed",
+      "estimated_cost_usd": null
     },
     {
       "case_id": "EVAL-06",
@@ -8612,9 +8757,15 @@
       "tool_calls": 5,
       "model_calls": 6,
       "invalid_outputs": 0,
-      "latency_seconds": 0.011,
+      "latency_seconds": 0.012,
       "input_tokens": null,
-      "output_tokens": null
+      "output_tokens": null,
+      "assessed_supporting_refs": 4,
+      "unsupported_supporting_refs": 0,
+      "evidence_gaps": 0,
+      "timeouts": 0,
+      "termination_reason": "all_tasks_succeeded",
+      "estimated_cost_usd": null
     },
     {
       "case_id": "EVAL-06",
@@ -9360,7 +9511,13 @@
       "invalid_outputs": 0,
       "latency_seconds": 0.005,
       "input_tokens": null,
-      "output_tokens": null
+      "output_tokens": null,
+      "assessed_supporting_refs": 4,
+      "unsupported_supporting_refs": 0,
+      "evidence_gaps": 0,
+      "timeouts": 0,
+      "termination_reason": "completed",
+      "estimated_cost_usd": null
     },
     {
       "case_id": "EVAL-07",
@@ -9510,7 +9667,13 @@
       "invalid_outputs": 0,
       "latency_seconds": 0.006,
       "input_tokens": null,
-      "output_tokens": null
+      "output_tokens": null,
+      "assessed_supporting_refs": 3,
+      "unsupported_supporting_refs": 0,
+      "evidence_gaps": 1,
+      "timeouts": 0,
+      "termination_reason": "some_tasks_did_not_succeed",
+      "estimated_cost_usd": null
     },
     {
       "case_id": "EVAL-07",
@@ -9641,9 +9804,15 @@
       "tool_calls": 6,
       "model_calls": 2,
       "invalid_outputs": 0,
-      "latency_seconds": 0.003,
+      "latency_seconds": 0.004,
       "input_tokens": null,
-      "output_tokens": null
+      "output_tokens": null,
+      "assessed_supporting_refs": 3,
+      "unsupported_supporting_refs": 0,
+      "evidence_gaps": 1,
+      "timeouts": 0,
+      "termination_reason": "completed",
+      "estimated_cost_usd": null
     },
     {
       "case_id": "EVAL-08",
@@ -10432,9 +10601,15 @@
       "tool_calls": 5,
       "model_calls": 6,
       "invalid_outputs": 0,
-      "latency_seconds": 0.011,
+      "latency_seconds": 0.012,
       "input_tokens": null,
-      "output_tokens": null
+      "output_tokens": null,
+      "assessed_supporting_refs": 6,
+      "unsupported_supporting_refs": 0,
+      "evidence_gaps": 1,
+      "timeouts": 0,
+      "termination_reason": "all_tasks_succeeded",
+      "estimated_cost_usd": null
     },
     {
       "case_id": "EVAL-08",
@@ -11174,9 +11349,15 @@
       "tool_calls": 5,
       "model_calls": 2,
       "invalid_outputs": 0,
-      "latency_seconds": 0.005,
+      "latency_seconds": 0.006,
       "input_tokens": null,
-      "output_tokens": null
+      "output_tokens": null,
+      "assessed_supporting_refs": 6,
+      "unsupported_supporting_refs": 0,
+      "evidence_gaps": 1,
+      "timeouts": 0,
+      "termination_reason": "completed",
+      "estimated_cost_usd": null
     },
     {
       "case_id": "EVAL-09",
@@ -11651,9 +11832,15 @@
       "tool_calls": 4,
       "model_calls": 5,
       "invalid_outputs": 0,
-      "latency_seconds": 0.007,
+      "latency_seconds": 0.008,
       "input_tokens": null,
-      "output_tokens": null
+      "output_tokens": null,
+      "assessed_supporting_refs": 0,
+      "unsupported_supporting_refs": 0,
+      "evidence_gaps": 2,
+      "timeouts": 0,
+      "termination_reason": "all_tasks_succeeded",
+      "estimated_cost_usd": null
     },
     {
       "case_id": "EVAL-09",
@@ -12122,7 +12309,13 @@
       "invalid_outputs": 0,
       "latency_seconds": 0.004,
       "input_tokens": null,
-      "output_tokens": null
+      "output_tokens": null,
+      "assessed_supporting_refs": 0,
+      "unsupported_supporting_refs": 0,
+      "evidence_gaps": 2,
+      "timeouts": 0,
+      "termination_reason": "completed",
+      "estimated_cost_usd": null
     },
     {
       "case_id": "EVAL-10",
@@ -12749,7 +12942,13 @@
       "invalid_outputs": 0,
       "latency_seconds": 0.01,
       "input_tokens": null,
-      "output_tokens": null
+      "output_tokens": null,
+      "assessed_supporting_refs": 7,
+      "unsupported_supporting_refs": 0,
+      "evidence_gaps": 0,
+      "timeouts": 0,
+      "termination_reason": "all_tasks_succeeded",
+      "estimated_cost_usd": null
     },
     {
       "case_id": "EVAL-10",
@@ -13340,9 +13539,15 @@
       "tool_calls": 5,
       "model_calls": 2,
       "invalid_outputs": 0,
-      "latency_seconds": 0.004,
+      "latency_seconds": 0.005,
       "input_tokens": null,
-      "output_tokens": null
+      "output_tokens": null,
+      "assessed_supporting_refs": 7,
+      "unsupported_supporting_refs": 0,
+      "evidence_gaps": 0,
+      "timeouts": 0,
+      "termination_reason": "completed",
+      "estimated_cost_usd": null
     }
   ],
   "labels": {

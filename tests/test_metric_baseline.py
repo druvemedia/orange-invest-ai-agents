@@ -360,3 +360,56 @@ def test_a_series_loaded_twice_gives_the_same_summary_and_classification():
     pool_ref = next(ref for ref, src, r in one.records() if r.get("metric_name") == "db_pool_utilization_percent"
                     and r["timestamp"] == "2026-09-01T10:15:00Z")
     assert one.classify(pool_ref).reason == two.classify(pool_ref).reason
+
+
+# --- Irregular, incomplete data and one shared baseline -------------------------------------------------------------
+
+
+def irregular(name: str, points: list[tuple[str, float]]) -> list[dict]:
+    return [{"service": "svc", "metric_name": name, "timestamp": f"2026-09-01T{t}:00Z", "value": v, "unit": "u"}
+            for t, v in points]
+
+
+def test_irregular_spacing_and_gaps_use_only_the_samples_that_exist_before_onset():
+    # 1, 2, 7, 13, 30 minutes apart, then a gap until the incident samples after the 10:12 report (no error logs,
+    # so the reported time is the onset estimate)
+    points = [("08:30", 10.0), ("08:31", 11.0), ("08:33", 10.0), ("08:40", 9.0), ("08:53", 10.0), ("09:23", 10.0),
+              ("10:15", 30.0), ("10:20", 31.0)]
+    index = RefIndex().add_sets([evidence("m", EvidenceSource.METRICS, irregular("q", points))])
+
+    head, how = index.metric_baseline("svc", "q")
+    assert head == sorted([10.0, 11.0, 10.0, 9.0, 10.0, 10.0]) and how.startswith("6 samples before")
+    assert index.classify("m#6").evidence_class is EvidenceClass.DIRECT  # 30 vs a median of 10
+
+
+def test_incomplete_series_with_too_few_pre_onset_samples_is_insufficient_not_normal():
+    points = [("09:40", 10.0), ("10:20", 10.5), ("10:25", 10.4)]  # one pre-onset sample survived
+    index = RefIndex().add_sets([evidence("m", EvidenceSource.METRICS, irregular("q", points))])
+
+    c = index.classify("m#2")
+
+    assert c.evidence_class is EvidenceClass.CONTEXTUAL and "insufficient baseline (1 sample(s)" in c.reason
+
+
+@pytest.mark.parametrize("case_id", [f"EVAL-{i:02d}" for i in range(1, 11)])
+def test_model_summary_and_classifier_use_the_same_baseline_for_every_real_series(case_id):
+    """For every metric series in every evaluation case, the summary shown to the model and the classifier agree."""
+    from app.agents.evidence import _median
+    from app.agents.observability import summarise_metrics
+
+    case = {c.case_id: c for c in load_cases()}[case_id]
+    tools = case.tools()
+    reported = case.incident.reported_at
+    window = {"start": (reported - timedelta(hours=2)).isoformat(), "end": (reported + timedelta(hours=1)).isoformat()}
+    metrics = tools["query_metrics"].run({**window, "limit": 2000})
+    logs = tools["search_logs"].run({**window, "min_level": "WARNING", "limit": 500})
+    sets = [evidence("m", EvidenceSource.METRICS, [r.model_dump(mode="json") for r in metrics.records], reported,
+                     services=list(case.incident.affected_services))]
+    sets.append(evidence("l", EvidenceSource.LOGS, [r.model_dump(mode="json") for r in logs.records], reported,
+                         services=list(case.incident.affected_services)))
+    index = RefIndex().add_sets(sets)
+
+    for s in summarise_metrics(sets[:1], index):
+        head, how = index.metric_baseline(s.service, s.metric_name)
+        assert s.baseline == (round(_median(head), 3) if head else None), (s.service, s.metric_name)
+        assert s.baseline_basis == (f"median of {how}" if head else how)

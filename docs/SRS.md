@@ -51,9 +51,11 @@ Architecture, flow and sequence diagrams are in [ARCHITECTURE.md](ARCHITECTURE.m
 | FR-13 | Report view with every citation resolved to its record; JSON and Markdown | `app/product/report_view.py` | `test_report_resolves_every_citation_to_retrieved_evidence`, `tests/test_report_view.py` | Verified |
 | FR-14 | Recover from tool and agent failures (retry retryable errors once, record gaps, fall back deterministically) | `app/orchestration/engine.py`, `app/agents/base.py::LLMAgent.__call__`, `app/tools/faults.py` | `test_tool_failure_and_partial_evidence_are_reported`, `test_invalid_model_output_exhausts_bounded_retries`, `test_injected_faults_return_failed_results` | Verified |
 | FR-15 | Single-agent baseline with the same tools, budgets, rules and report contract | `app/baseline/single_agent.py` | `tests/test_baseline.py` | Verified offline |
-| FR-16 | Evaluation harness: 10 labelled cases, both approaches, accuracy, grounding, tool calls, latency, tokens | `app/evaluation/` | `tests/test_eval_runner.py`, `tests/test_eval_metrics.py`, `tests/test_eval_dataset.py` | Partial: offline mode run; live mode implemented but **never run** |
+| FR-16 | Evaluation harness: 10 labelled cases, both approaches, accuracy with denominators, grounding, unsupported citations, evidence gaps, timeouts, tool calls, latency, tokens, estimated cost, configuration | `app/evaluation/` | `tests/test_eval_runner.py`, `tests/test_eval_metrics.py`, `tests/test_eval_dataset.py`, `tests/test_live_evaluation.py` | Partial: offline mode run; live mode implemented but **never run** |
 | FR-17 | Billed model calls only with an explicit opt-in | `app/llm/factory.py::check_llm_settings` | `test_without_opt_in_no_client_is_built`, `tests/test_billing_guard.py` | Verified |
 | FR-18 | Refuse a model request whose input could exceed the per-request budget, before sending | `app/llm/openai_client.py::input_token_bound` | `test_an_oversized_request_is_refused_before_anything_is_sent`, `tests/test_input_budget.py` | Verified; no request refused in real runs 3–4 |
+| FR-19 | Verify evidence against each hypothesis: named changes cited; mechanism-consistent failure logs not counted against it; both-ways citations dropped; metric direction checked against claimed increases; structured per-citation assessment (exists, class, sources, services, relevance, flags) | `app/agents/grounding.py::check_citations`, `assess_citations` | `tests/test_verification.py` (run 4's real evidence and counterexamples) | Partial: verified offline; checked on run 4's recorded evidence only; no new real-model run |
+| FR-20 | Fair live evaluation: the same inputs, tools, model and scoring for both approaches; two opt-ins and a budget; preflight estimate; budget stop with `not_run` runs kept; unique output folders; README and checksums | `app/evaluation/live.py`, `runner.py`, `__main__.py` | `tests/test_live_evaluation.py`, `test_live_evaluation_needs_both_opt_ins_and_a_budget` | Partial: implemented and tested offline; **never run** |
 
 ## 4. Non-functional requirements
 
@@ -64,8 +66,8 @@ Architecture, flow and sequence diagrams are in [ARCHITECTURE.md](ARCHITECTURE.m
 | NFR-03 | Secrets never exposed: `SecretStr`, redacted error text, `.env` git-ignored | `app/core/config.py`, `app/core/redaction.py` | `test_internal_errors_are_safe_and_secret_free`, `tests/test_llm.py` | Verified |
 | NFR-04 | Termination: every task ends in a terminal state and a report is always produced, a deterministic fallback if needed | `app/orchestration/engine.py`, `OrchestratorAgent.investigate` | `test_engine_deadline_still_produces_a_report`, `test_finalizer_runs_after_all_tasks_including_follow_ups` | Verified |
 | NFR-05 | Auditability: code adjustments, citation checks, decision checks and per-call usage recorded and shown | report `adjustments`, `Adjudication`, `CallStats` logging | `tests/test_report_view.py` | Verified |
-| NFR-06 | No evaluation-answer leakage: labels read only by the scorer after every run; prompts checked against all labels | `app/evaluation/runner.py`, `app/evaluation/dataset.py` | `test_labels_are_loaded_only_after_every_investigation`, `test_no_model_facing_prompt_reveals_an_evaluation_answer` | Verified |
-| NFR-07 | Reproducible offline operation: tests and offline evaluation need no key or network | `HeuristicLLMClient`, `ScriptedLLMClient` | the full suite (591 tests) | Verified |
+| NFR-06 | No evaluation-answer leakage: labels read only by the scorer after every run; prompt templates and every prompt and input actually sent (all 10 cases, both approaches) checked against all labels | `app/evaluation/runner.py`, `app/evaluation/dataset.py` | `test_labels_are_loaded_only_after_every_investigation`, `test_no_model_facing_prompt_reveals_an_evaluation_answer`, `test_gold_labels_never_reach_the_investigation` | Verified |
+| NFR-07 | Reproducible offline operation: tests and offline evaluation need no key or network | `HeuristicLLMClient`, `ScriptedLLMClient` | the full suite (626 tests) | Verified |
 | NFR-08 | Authentication and authorisation | none | none | Not implemented: keep the server on 127.0.0.1 |
 | NFR-09 | Persistence of jobs across restarts | in-memory only (last 50 jobs) | none | Not implemented |
 
@@ -174,11 +176,11 @@ The lifecycle is shown in [ARCHITECTURE.md](ARCHITECTURE.md#investigation-flow).
 | Ranked hypotheses, supporting/contradicting evidence, confidence, facts vs assumptions, inconclusive | `reasoning.py`, `report_rules.py`, `adjudication.py` | `tests/test_phase6_quality.py` | ARCHITECTURE, report view | Verified |
 | ≥ 10 synthetic incidents incl. misleading, conflicting, tool failures | `data/eval/` | `tests/test_eval_dataset.py` | data/eval/README.md | Verified |
 | Multi-agent vs single-agent baseline with the same tools | `app/baseline/single_agent.py` | `tests/test_baseline.py` | EVALUATION.md | Verified offline |
-| Accuracy, grounding, tool calls, latency, tokens | `app/evaluation/metrics.py` | `tests/test_eval_metrics.py` | EVALUATION.md | Partial: tokens only in live mode, never run |
-| Evaluation comparison | `evaluation_results/offline-heuristic/` | — | EVALUATION.md | Partial: offline stand-in only |
+| Accuracy, grounding, tool calls, latency, tokens | `app/evaluation/metrics.py`, `pricing.py` | `tests/test_eval_metrics.py`, `tests/test_live_evaluation.py` | EVALUATION.md | Partial: tokens and cost only in live mode, never run |
+| Evaluation comparison | `evaluation_results/offline-heuristic/`; live runner prepared (`app/evaluation/live.py`) | `tests/test_live_evaluation.py` | EVALUATION.md | Partial: offline stand-in only; the live comparison is prepared but not run |
 | Runnable implementation and setup | README | full suite | README | Verified on macOS; Windows steps not run |
 | Architecture diagram and explanation | — | — | ARCHITECTURE "Diagrams" | Verified (Mermaid parsed and rendered with Mermaid 10.9.1) |
-| Synthetic dataset and automated tests | `data/`, `tests/` | 591 tests | README | Verified |
+| Synthetic dataset and automated tests | `data/`, `tests/` | 626 tests | README | Verified |
 | Technical note ≤ 500 words | — | — | TECHNICAL_NOTE.md | Verified |
 | AI coding assistant transcript | — | — | AI_TRANSCRIPT.md | Verified: redacted, provenance stated |
 | No hardcoded answers | labels isolated; prompt check | `test_no_model_facing_prompt_reveals_an_evaluation_answer` | this document, NFR-06 | Verified |

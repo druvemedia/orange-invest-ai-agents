@@ -23,11 +23,17 @@ investigation with agents that:
 
 ## 2. Capabilities and limitations
 
-**Implemented and tested offline (591 automated tests):**
+**Implemented and tested offline (626 automated tests):**
 - six agents on a bounded asyncio engine, with parallel tasks, task dependencies and a critic feedback loop;
 - five evidence tools with typed queries and results, error handling and simulated failures;
 - code-enforced grounding: citation checks, evidence classes, pre-incident metric baselines, timeline and
   evidence-independence checks, confidence caps, and an auditable adjudication;
+- evidence-to-hypothesis verification:
+  - a change a hypothesis names is cited;
+  - failure logs that describe the hypothesis's own mechanism are not counted against it;
+  - evidence cited both ways counts as neither;
+  - a metric's direction is checked against a claimed increase;
+  - every citation gets a structured assessment;
 - a single-agent baseline with the same tools and rules, and an evaluation harness over 10 labelled incidents;
 - REST API, minimal web UI and CLI;
 - a billing opt-in and a per-request input-token budget for real model calls.
@@ -156,7 +162,7 @@ Give the billing opt-in **on the command line for one command only**, never in `
 ## 10. Running
 
 ```zsh
-python -m pytest                                                        # 591 tests; no key, no network
+python -m pytest                                                        # 626 tests; no key, no network
 LLM_PROVIDER=offline-heuristic python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 LLM_PROVIDER=offline-heuristic python -m app.cli --list                 # evidence sources and example incidents
 LLM_PROVIDER=offline-heuristic python -m app.cli EVAL-07 --format markdown
@@ -171,8 +177,17 @@ python -m app.evaluation offline                                        # both a
 python -c "from app.core.config import get_settings; from app.llm import check_llm_settings; check_llm_settings(get_settings(), billing_confirmed=True); print('configured')"
 ```
 
-The CLI prints the elapsed time, model calls and token totals at the end. The live evaluation,
-`python -m app.evaluation live --confirm-billed`, is implemented but has never been run.
+The CLI prints the elapsed time, model calls and token totals at the end.
+
+**Live evaluation (billed, never run):** it needs `LLM_ALLOW_BILLED_CALLS=true`, `--confirm-billed` and a budget
+(`--max-cost-usd`). Preview the plan and cost first, without any call:
+
+```zsh
+python -m app.evaluation live --max-cost-usd 1 --preflight-only
+LLM_ALLOW_BILLED_CALLS=true python -m app.evaluation live --max-cost-usd 1 --confirm-billed
+```
+
+Safeguards are described in [docs/EVALUATION.md](docs/EVALUATION.md#running).
 
 ## 11. UI and API
 
@@ -201,8 +216,15 @@ curl -s http://127.0.0.1:8000/investigations/<investigation_id>/report.md    # M
   conflicting signals, missing metrics, a simulated tool failure, competing causes and insufficient evidence.
 - Both approaches run with the same tools, budgets and rules. Labels are read only by the scorer, after every
   investigation has finished.
-- Metrics: strict and lenient root-cause accuracy, confidently-wrong rate, top-1/top-3, citation existence and
-  key-evidence recall, tool calls, model calls, latency and tokens.
+- Metrics:
+  - strict and lenient root-cause accuracy, the confidently-wrong rate and inconclusive outcomes, each shown with its
+    denominator;
+  - top-1/top-3 hits;
+  - citation existence and availability, key-evidence recall and unsupported supporting citations;
+  - evidence gaps and timeouts;
+  - tool calls, model calls and latency;
+  - tokens and estimated cost (real-model runs only);
+  - the model configuration.
 
 **Offline results** ([evaluation_results/offline-heuristic/report.md](evaluation_results/offline-heuristic/report.md)):
 - Both approaches score strict 0.4, lenient 0.6 and confidently wrong 0.0.
@@ -216,7 +238,8 @@ curl -s http://127.0.0.1:8000/investigations/<investigation_id>/report.md    # M
   mechanism.
 - Run 4 used a Reasoning prompt example that revealed EVAL-01's answer (since removed, with a regression test), so
   it is not clean evidence of improvement.
-- The later noise-floor fix and the leak-free prompt have not been run against a real model.
+- The later noise-floor fix, the leak-free prompt and the evidence-verification rules have not been run against a
+  real model. The verification rules were checked only on run 4's recorded evidence.
 - There is no real-model multi-agent vs single-agent comparison.
 
 ## 13. Development record
@@ -258,7 +281,7 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), "Known limits", and [
 | `app/product/`, `app/api/`, `app/static/`, `app/cli.py` | service layer, REST API, web UI, CLI |
 | `app/llm/` | model clients, billing opt-in, input-token budget |
 | `data/eval/`, `data/fixtures/` | labelled evaluation incidents; shared demo fixtures |
-| `tests/` | 591 automated tests |
+| `tests/` | 626 automated tests |
 | `evaluation_results/offline-heuristic/` | offline evaluation results |
 | `artifacts/live-runs/` | the four real-model runs of EVAL-01, each with a README and `SHA256SUMS` |
 | `docs/ARCHITECTURE.md` | diagrams, engine, agents, grounding, termination, known limits |
@@ -274,7 +297,7 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), "Known limits", and [
 |---|---|
 | Runnable implementation and setup instructions | `app/`; sections 7–11 above |
 | Architecture diagram and explanation | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#diagrams): system, flow and sequence diagrams (Mermaid) |
-| Synthetic dataset and automated tests | `data/eval/`, `data/fixtures/`; `tests/` (591 tests) |
+| Synthetic dataset and automated tests | `data/eval/`, `data/fixtures/`; `tests/` (626 tests) |
 | Evaluation results comparing both approaches | `evaluation_results/offline-heuristic/` (offline stand-in only; see section 12) and `docs/LIVE_RUN_EVAL01_ANALYSIS.md` |
 | Technical note (≤ 500 words) | [docs/TECHNICAL_NOTE.md](docs/TECHNICAL_NOTE.md) |
 | AI coding assistant transcript | [docs/AI_TRANSCRIPT.md](docs/AI_TRANSCRIPT.md) |

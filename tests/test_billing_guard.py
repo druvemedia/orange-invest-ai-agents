@@ -110,17 +110,57 @@ def test_offline_mode_needs_no_key_and_no_opt_in(clean_env, monkeypatch, capsys,
     assert "model offline-heuristic" in capsys.readouterr().out
 
 
-def test_live_evaluation_treats_confirm_billed_as_the_opt_in(clean_env, monkeypatch, recorded_clients):
-    factories = []
+def test_live_evaluation_needs_both_opt_ins_and_a_budget(clean_env, monkeypatch, recorded_clients, tmp_path, capsys):
+    """LLM_ALLOW_BILLED_CALLS=true (the same guard as the API and CLI), --confirm-billed and --max-cost-usd."""
+    factories, written = [], []
 
     def fake_run_evaluation(mode, factory, **kwargs):
-        factories.append(factory)
+        factories.append((factory, kwargs))
         return {"aggregates": {}}
 
-    monkeypatch.setattr(evaluation_cli, "get_settings", lambda: Settings(_env_file=None, **OPENAI))
     monkeypatch.setattr(evaluation_cli, "run_evaluation", fake_run_evaluation)
-    monkeypatch.setattr(evaluation_cli, "write_outputs", lambda result, out: None)
+    monkeypatch.setattr(evaluation_cli, "write_outputs", lambda result, out: written.append(out))
+    monkeypatch.setattr("app.evaluation.live.write_provenance", lambda out, result, plan: None)
+    out = tmp_path / "live-run"
+    args = ["live", "--cases", "EVAL-01", "--max-cost-usd", "1", "--out", str(out)]
 
-    assert evaluation_cli.main(["live", "--cases", "EVAL-01", "--confirm-billed"]) == 0
-    assert recorded_clients == []  # validated without building anything
-    assert isinstance(factories[0](), OpenAIClient) and len(recorded_clients) == 1
+    monkeypatch.setattr(evaluation_cli, "get_settings", lambda: Settings(_env_file=None, **OPENAI))
+    assert evaluation_cli.main([*args, "--confirm-billed"]) == 2  # --confirm-billed alone is no longer enough
+    assert "LLM_ALLOW_BILLED_CALLS" in capsys.readouterr().err
+
+    opted_in = Settings(_env_file=None, llm_allow_billed_calls=True, **OPENAI)
+    monkeypatch.setattr(evaluation_cli, "get_settings", lambda: opted_in)
+    assert evaluation_cli.main(["live", "--cases", "EVAL-01", "--confirm-billed"]) == 2  # no budget
+    assert evaluation_cli.main(args) == 2  # no --confirm-billed
+    assert factories == [] and recorded_clients == [] and written == []
+
+    assert evaluation_cli.main([*args, "--confirm-billed"]) == 0
+    factory, kwargs = factories[0]
+    assert kwargs["budget"].max_usd == 1 and written == [out] and recorded_clients == []
+    assert isinstance(factory(), OpenAIClient) and len(recorded_clients) == 1  # built through the normal guard
+
+
+def test_live_evaluation_never_overwrites_and_preflight_makes_no_calls(clean_env, monkeypatch, recorded_clients, tmp_path,
+                                                                        capsys):
+    monkeypatch.setattr(evaluation_cli, "get_settings",
+                        lambda: Settings(_env_file=None, llm_allow_billed_calls=True, **OPENAI))
+    monkeypatch.setattr(evaluation_cli, "run_evaluation", lambda *a, **k: (_ for _ in ()).throw(AssertionError("ran")))
+
+    existing = tmp_path / "old"
+    existing.mkdir()
+    assert evaluation_cli.main(["live", "--max-cost-usd", "5", "--confirm-billed", "--out", str(existing)]) == 2
+    assert "never overwritten" in capsys.readouterr().err
+
+    assert evaluation_cli.main(["live", "--max-cost-usd", "5", "--preflight-only", "--out", str(tmp_path / "x")]) == 0
+    plan = capsys.readouterr().err
+    assert "20 investigations" in plan and "worst case" in plan and recorded_clients == []
+    assert not (tmp_path / "x").exists()
+
+    assert evaluation_cli.main(["live", "--max-cost-usd", "0.05", "--preflight-only", "--out", str(tmp_path / "y")]) == 2
+    assert "below the worst case of a single investigation" in capsys.readouterr().err
+
+    # The preview needs no billing opt-in (it never builds a client); a real run without it is still refused.
+    monkeypatch.setattr(evaluation_cli, "get_settings", lambda: Settings(_env_file=None, **OPENAI))
+    assert evaluation_cli.main(["live", "--max-cost-usd", "5", "--preflight-only", "--out", str(tmp_path / "z")]) == 0
+    assert evaluation_cli.main(["live", "--max-cost-usd", "5", "--confirm-billed", "--out", str(tmp_path / "z")]) == 2
+    assert recorded_clients == [] and not (tmp_path / "z").exists()
