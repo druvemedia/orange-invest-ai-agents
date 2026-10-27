@@ -91,7 +91,7 @@ worlds (`EVAL-01` to `EVAL-10`); there are no real observability integrations. P
 
 | `LLM_PROVIDER` | What runs |
 |---|---|
-| `openai` (with `LLM_MODEL`, `LLM_API_KEY`) | The six agents on the real model. Billed; about 100 s per investigation. |
+| `openai` (with `LLM_MODEL`, `LLM_API_KEY`) | The six agents on the real model. Billed; 56–104 s per investigation in the three runs so far. Runs only with the explicit opt-in `LLM_ALLOW_BILLED_CALLS=true`; without it, submissions return `503` and no client is created. |
 | `offline-heuristic` | A keyless, deterministic rule-based stand-in (most recent change, otherwise most frequent error). **Not an AI model**; every report says so. For demos and local development. |
 | unset | The server runs, `/health` works, and submissions return `503` with instructions. |
 
@@ -124,7 +124,7 @@ and are lost on restart.
 
 > **Demo limitations.**
 > - **No authentication.** Anyone who can reach the port can start investigations (billed, with
->   `LLM_PROVIDER=openai`) and read every report. Keep the server bound to `127.0.0.1` (uvicorn's default), and
+>   `LLM_PROVIDER=openai` and `LLM_ALLOW_BILLED_CALLS=true`) and read every report. Keep the server bound to `127.0.0.1` (uvicorn's default), and
 >   don't expose it on a network without putting authentication in front of it.
 > - **Synthetic evidence only.**
 > - **One process, in-memory jobs** (lost on restart).
@@ -153,6 +153,12 @@ print(r.model_dump_json(indent=2))"
 
 ## Run an investigation with a real model (optional, billed)
 
+For demos and development, use the keyless offline stand-in. It costs nothing and is not an AI model:
+
+```zsh
+LLM_PROVIDER=offline-heuristic python -m app.cli INC-2041
+```
+
 The test suite never calls a model. To run the agents for real, put these in `.env`:
 
 ```zsh
@@ -161,13 +167,16 @@ LLM_MODEL=<a model that supports structured outputs via the Responses API>
 LLM_API_KEY=<your key>
 ```
 
-Then:
+Real calls are billed, so they also need an explicit opt-in. Give it **on the command line, for one command
+only**. Don't put it in `.env`; it is off by default and should stay off:
 
 ```zsh
-python -m app.cli INC-2041          # summary; --format markdown for the full report, --json for JSON
+LLM_ALLOW_BILLED_CALLS=true python -m app.cli INC-2041    # billed; --format markdown or --json for the full report
 ```
 
-Without a usable model setting, the command exits with code 2 and makes no request.
+Without the opt-in, or without a usable model setting, the CLI exits with code 2 and the API returns `503`. Both
+happen before any OpenAI client is created, so no request is sent. `python -m app.evaluation live --confirm-billed`
+treats `--confirm-billed` as its opt-in.
 
 ### Live smoke test
 
@@ -184,9 +193,10 @@ Details are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). To repeat the contr
 
 1. Create `.env` from `.env.example` and set `LLM_PROVIDER=openai`, `LLM_MODEL` and `LLM_API_KEY`.
    Never paste the key into a terminal command or commit `.env`.
-2. Check the configuration without spending anything:
-   `python -c "from app.core.config import get_settings; from app.llm import build_llm_client; build_llm_client(get_settings()); print('configured')"`
-3. Run once: `python -m app.cli INC-2041`. This is billed. With the default
+2. Check the configuration without spending anything. This validates the settings, builds no client and sends
+   nothing:
+   `python -c "from app.core.config import get_settings; from app.llm import check_llm_settings; check_llm_settings(get_settings(), billing_confirmed=True); print('configured')"`
+3. Run once, opting in for this command only: `LLM_ALLOW_BILLED_CALLS=true python -m app.cli INC-2041`. This is billed. With the default
    `AGENT_MAX_CRITIC_ROUNDS=2` there are at most 8 agent tasks, so 8 model calls on the normal path
    and at most 16 if every agent retries once. The run stops at `INVESTIGATION_DEADLINE_SECONDS`.
 4. Record the investigation status, the report conclusion, the per-call outcome/latency/tokens
