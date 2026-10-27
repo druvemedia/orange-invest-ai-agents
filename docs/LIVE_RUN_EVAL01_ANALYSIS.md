@@ -111,10 +111,15 @@ run 1. HTTP success and schema acceptance did not produce a correct conclusion.
   This has not been re-checked with a real model.
 - **Weak citations.** One hypothesis about "dependent services" cites an interpretation about the config change, and
   another cites the unrelated orders deploy as support.
-- **Over-eager fact checks.** Two facts were moved to interpretations by mistake: "indicate" matches the causal-language
-  check, and "not rapidly increasing" matches the increase check, which ignores negation.
-- **Report noise.** The limitation "Critic round limit reached" appears twice. One open question asks which metrics
-  were missing, although the inventory shows none were.
+- **Over-eager fact checks** (fixed offline since). Three facts were moved to interpretations. Two contained
+  "indicate": one restates the log message, and the other ("a 504 error indicating 'payments-api' was not
+  responsive") lightly glosses "Upstream payments-api returned 504". The third, "was not rapidly increasing", was
+  read as a claimed increase because negation was ignored. Code now keeps all three as facts
+  (`tests/test_report_wording.py`).
+- **Report noise.** The critic round limit was stated twice: by code ("adjudicated on the evidence") and by the model
+  ("not resolved due to insufficient evidence"). The model's restatement is now dropped when code states it
+  (fixed offline). Not fixed: one open question asks which metrics were missing, although the inventory shows none
+  were, because open questions are not checked against the inventory.
 
 ## Not verified
 

@@ -205,9 +205,16 @@ with the exact query, records, completeness and warnings.
   - The widened metric query has no upper bound beyond the scope rules: it can span about 9 hours. At the tool's
     record limit, whole series are dropped in service/metric order and the result is marked partial.
 - **Keyword heuristics.** These are fixed phrase lists, so paraphrases can slip through:
-  - spotting "increase" claims, used to move a flat metric to contradicting;
+  - spotting "increase" claims, used to move a flat metric to contradicting. An increase word negated within the
+    4 preceding words of its clause ("did not rise", "no increase") is not a claim; "not only" and "no doubt" are
+    not negations. The nouns "load", "traffic" and "volume" count as claims by themselves, so "load did not
+    increase" still does. A flat metric is never counted as support, even for a claim that denies an increase;
   - spotting "missing evidence" claims;
-  - spotting causal wording in facts.
+  - spotting causal wording in facts. "Indicate" counts as inferential unless an evidence noun (logs, errors,
+    messages, records, metrics…) comes within the 5 preceding words of its clause, as in "the logs indicate
+    timeouts". So an inference phrased that way ("the errors indicate a connection leak") stays a fact;
+  - spotting a model limitation that restates the critic round limit, which is dropped when code already states
+    it. Other duplicates are removed only when the wording is identical.
 - **Timeline checks.**
   - The tolerances are fixed: ±60 s, a 5-minute rollback settle period, and 25% for "worsened".
   - Delayed-effect changes aren't modelled.

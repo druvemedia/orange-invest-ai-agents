@@ -6,9 +6,13 @@ Each rule records what it changed, so the report shows both what the model wrote
 2. Report confidences never exceed the reasoning's (code-capped) confidences.
 3. Report citations get the same checks as reasoning citations (app.agents.grounding).
 4. Facts must cite evidence and must not make causal or inferential claims. Such statements move
-   to interpretations (deterministic phrase list) and uncited ones move to assumptions.
+   to interpretations (deterministic phrase list) and uncited ones move to assumptions. "Indicate" is
+   inferential unless it reports what an evidence item shows ("the logs indicate timeouts"). A fact
+   that claims an increase (not negated, see app.agents.grounding) its cited metrics do not show also
+   moves to interpretations.
 5. "Evidence was missing" claims are validated against the evidence inventory (app.agents.inventory).
-   Limitations are the inventory's genuine gaps plus the model's surviving limitations.
+   Limitations are the inventory's genuine gaps plus the model's surviving limitations. A model
+   limitation restating the critic round limit is dropped when code already states it.
 6. If the model lists no assumptions while a causal hypothesis exists, the material assumption that the
    causal link is inferred rather than observed is added and marked as added by code.
 7. A change that came after the first observed symptom, or whose rollback did not end the symptoms
@@ -28,15 +32,34 @@ from app.agents.contracts import (
     TemporalAssessment,
 )
 from app.agents.evidence import EvidenceClass, RefIndex
-from app.agents.grounding import INCREASE_CLAIM, check_citations
+from app.agents.grounding import asserts_increase, check_citations, words_before
 from app.agents.inventory import validate_availability_claims
 
 CAUSAL = re.compile(
-    r"\b(caus\w*|due to|because|led to|leads? to|leading to|result(?:s|ed|ing)? in|trigger\w*|indicat\w*|"
+    r"\b(caus\w*|due to|because|led to|leads? to|leading to|result(?:s|ed|ing)? in|trigger\w*|"
     r"suggest\w*|likely|probabl\w*|impl(?:y|ies|ied)|therefore|attribut\w*|explain\w*|contribut\w*)\b",
     re.IGNORECASE,
 )
+INDICATES = re.compile(r"\bindicat\w*", re.IGNORECASE)
+# Nouns for evidence items. "<item> indicates X" reports what the item shows, like "the logs show X".
+EVIDENCE_ITEMS = frozenset({
+    "log", "logs", "line", "lines", "entry", "entries", "message", "messages", "error", "errors", "record",
+    "records", "alert", "alerts", "event", "events", "metric", "metrics", "sample", "samples", "reading",
+    "readings", "data", "trace", "traces",
+})
+EVIDENCE_REACH = 5  # words before "indicate", within its clause
 CODE_ADDED = "(added by code) "
+# Start of the limitation code adds when the critic loop stops at its round limit (app.agents.reporting).
+ROUND_LIMIT_NOTE = "Critic round limit reached"
+ROUND_LIMIT_RESTATED = re.compile(r"\bcritic\b.*\bround limit\b|\bround limit\b.*\bcritic\b", re.IGNORECASE)
+
+
+def makes_causal_claim(text: str) -> bool:
+    """True if the text uses causal or inferential language that a fact must not."""
+    if CAUSAL.search(text):
+        return True
+    return any(not EVIDENCE_ITEMS.intersection(words_before(text, m.start(), EVIDENCE_REACH))
+               for m in INDICATES.finditer(text))
 
 
 def finalize_report(
@@ -82,10 +105,10 @@ def finalize_report(
         if not f.evidence_refs:
             assumptions.append(f.text)
             notes.append(f"Uncited 'fact' moved to assumptions: {f.text}")
-        elif CAUSAL.search(f.text):
+        elif makes_causal_claim(f.text):
             interpretations.append(f)
             notes.append(f"'Fact' with causal or inferential language moved to interpretations: {f.text}")
-        elif INCREASE_CLAIM.search(f.text) and all(
+        elif asserts_increase(f.text) and all(
                 refs.classify(r).evidence_class is EvidenceClass.NO_CHANGE for r in f.evidence_refs):
             interpretations.append(f)
             notes.append(f"'Fact' claims a change its cited metrics do not show; moved to interpretations: {f.text}")
@@ -113,6 +136,11 @@ def finalize_report(
 
     # 5. Evidence-availability claims
     limitations, removed = validate_availability_claims(list(report.limitations), inventory)
+    if any(k.startswith(ROUND_LIMIT_NOTE) for k in known_limitations):
+        restated = [lim for lim in limitations if ROUND_LIMIT_RESTATED.search(lim)]
+        limitations = [lim for lim in limitations if lim not in restated]
+        notes += [f"Removed limitation \"{lim}\": the critic round limit is already stated by code, with how its "
+                  "remaining issues were adjudicated." for lim in restated]
     assumptions, removed_a = validate_availability_claims(assumptions, inventory)
     notes += removed + removed_a
     limitations = list(dict.fromkeys([*inventory.unavailable, *known_limitations, *limitations]))

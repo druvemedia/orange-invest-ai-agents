@@ -24,7 +24,7 @@ from app.agents.contracts import (
 from app.agents.evidence import RefIndex, evidence_sets
 from app.agents.inventory import build_inventory
 from app.agents.reasoning import rank, register_findings
-from app.agents.report_rules import finalize_report
+from app.agents.report_rules import ROUND_LIMIT_NOTE, finalize_report
 from app.agents.temporal import assess
 from app.orchestration import TaskContext, TaskRecord, TaskStatus
 
@@ -150,7 +150,7 @@ def known_limitations(tasks, obs, dep, final_reasoning, critic_rounds) -> list[s
     if critic_rounds:
         last = critic_rounds[max(critic_rounds)]
         if last.loop_decision == "max_rounds_reached":
-            limits.append(f"Critic round limit reached with verdict '{last.final_verdict}'; its remaining issues were "
+            limits.append(f"{ROUND_LIMIT_NOTE} with verdict '{last.final_verdict}'; its remaining issues were "
                           "adjudicated on the evidence (see the adjudication).")
         if last.loop_decision == "revision_requested" and (final_reasoning is None or final_reasoning.round <= last.round):
             limits.append("The critic requested another round, but it did not run (task budget, attempt budget or failure).")
