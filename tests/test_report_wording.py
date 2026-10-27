@@ -129,10 +129,11 @@ def test_flat_metric_is_not_turned_against_a_hypothesis_that_denies_an_increase(
 
     # Known limit: "load", "traffic" and "volume" are claims by themselves, so this still counts as one.
     _, against, _ = check_citations("H3", "Load did not increase before the incident", ["m.rate#8"], [], refs)
-    assert against == ["m.rate#8"]
+    assert "m.rate#8" in against  # (the load rule may also add the flat request-rate peak)
 
     _, against, checks = check_citations("H3", "Increased load on payments-api", ["m.rate#8"], [], refs)
-    assert against == ["m.rate#8"] and checks[0].action == "moved_to_contradicting"
+    assert against[0] == "m.rate#8" and checks[0].action == "moved_to_contradicting"
+    assert any(c.action == "added_to_contradicting" for c in checks)  # the flat request-rate peak (load rule)
 
 
 # --- Duplicate limitations -----------------------------------------------------------------------------------------

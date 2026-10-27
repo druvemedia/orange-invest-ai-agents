@@ -180,15 +180,21 @@ treats `--confirm-billed` as its opt-in.
 
 ### Live smoke test
 
-Live integration has been exercised in three billed runs with `gpt-4o-mini`. The first two predate the Phase 6 and 7
-decision logic. The first, on 2026-10-26:
+Live integration has been exercised in five completed billed runs with `gpt-4o-mini`: one of INC-2041 and four of
+EVAL-01. A sixth submission was cancelled. The first, on 2026-10-26:
 - 9 calls, all accepted; the investigation completed in 104 s using about 55k input and 5.7k output tokens.
 - The report was inconclusive.
 
 The second, of EVAL-01 through the API, is preserved in [artifacts/live-runs/EVAL-01/](artifacts/live-runs/EVAL-01/)
 with its analysis in [docs/LIVE_RUN_EVAL01_ANALYSIS.md](docs/LIVE_RUN_EVAL01_ANALYSIS.md).
-The third, of EVAL-01 again after the fixes, is in [artifacts/live-runs/EVAL-01-run2/](artifacts/live-runs/EVAL-01-run2/):
-the extended schema was accepted, but it was again inconclusive with the correct cause ranked first.
+Later runs of EVAL-01, each after further fixes, are in
+[artifacts/live-runs/EVAL-01-run2/](artifacts/live-runs/EVAL-01-run2/), [-run3/](artifacts/live-runs/EVAL-01-run3/)
+and [-run4/](artifacts/live-runs/EVAL-01-run4/). Every run ranked the pool-size change or its effect first and cited
+the key evidence, but **none scored correct** against the answer key:
+- runs 1, 2 and 4 were inconclusive;
+- run 3 concluded, but its top hypothesis named only the mechanism.
+
+Each run is one observation, not a benchmark (see the analysis).
 Details are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). To repeat the controlled smoke test:
 
 1. Create `.env` from `.env.example` and set `LLM_PROVIDER=openai`, `LLM_MODEL` and `LLM_API_KEY`.

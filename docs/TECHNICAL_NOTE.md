@@ -40,15 +40,16 @@ runs finish. The metrics are:
 tests the harness, not reasoning. Both approaches score strict 0.4, lenient 0.6 and confidently wrong 0.0.
 These numbers do not measure real-model quality.
 
-Three billed gpt-4o-mini runs all ranked the correct cause first but concluded inconclusive. The first EVAL-01
-run exposed six defects, fixed offline. A second, after the fixes (55.9 s; 47,848 tokens), confirmed the API
-accepts the extended schema but exposed a metrics-baseline gap. These are single observations, not a benchmark.
+Four billed gpt-4o-mini runs of EVAL-01 (about $0.01–0.02 each) all ranked the pool-size change or its effect
+first, but none scored correct: three were inconclusive, and one concluded naming only the mechanism. Each exposed
+defects, fixed and tested offline. These are single observations, not a benchmark.
 
-**Verification.** 462 offline tests pass without network access, and 35 real-browser UI checks pass.
+**Verification.** 581 offline tests pass without network access; 35 real-browser UI checks passed earlier. Paid
+calls need an explicit opt-in and a per-request input-token budget.
 
 **Limitations.**
 - Evidence is synthetic; there is no authentication, and jobs are kept in memory.
 - Semantic support beyond structural checks depends on the model.
 - Thresholds (25%, 3× noise, ±60 s) are fixed, and keyword triggers can miss paraphrases.
-- The Phase 6–9 rules have one real-model observation.
+- The latest fixes have no real-model observation; real-model results vary between runs.
 - No real-model comparison of the two approaches has been run.

@@ -1,9 +1,26 @@
-# Live run analysis: EVAL-01 (2026-10-27), Phase 6 fixes and run 2
+# Live run analysis: EVAL-01 (2026-10-27), four real-model runs
+
+Four completed billed investigations of EVAL-01 with `gpt-4o-mini`, each through `POST /investigations` and each a
+single observation. They are scored against the unchanged answer key (`data/eval/labels.jsonl`) with the project's
+own scorer. A fifth submission (`inv-ef5d980add5c`) was cancelled after 3 model calls when its command was
+interrupted; it produced no report.
+
+| Run | Code | Conclusion | Top hypothesis (confidence) | Answer key | Calls | Tokens in / out | Time | Cost |
+|---|---|---|---|---|---|---|---|---|
+| 1 | before Phase 6 | inconclusive | Connection Pool Saturation Due to Reduced Pool Size (high) | missed (inconclusive) | 9 | 53,390 / 5,493 | 67.7 s | $0.011 |
+| 2 | Phases 6–9 | inconclusive | Insufficient Database Connection Pool Size (low) | missed (inconclusive) | 8 | 43,859 / 3,989 | 55.9 s | $0.009 |
+| 3 | + baseline, wording and budget fixes | **probable cause identified** | Database Connection Pool Saturation (high) | **wrong conclusion** | 10 | 83,624 / 5,933 | 84.8 s | $0.016 |
+| 4 | + run 3 fixes | inconclusive | DB Connection Pool Size Reduced from 40 to 8 by CHG-E01-2 (medium) | missed (inconclusive) | 9 | 59,987 / 5,199 | 74.2 s | $0.012 |
+
+Every run ranked the pool-size change, or its direct effect, first, and every run cited both key evidence items
+(the change record and a pool log line). **No run has yet produced the correct result: the cause named and
+accepted.** Runs 1, 2 and 4 named the cause but did not conclude. Run 3 concluded, but its title named the
+mechanism, not the cause. Costs are at $0.15 / $0.60 per million input / output tokens.
 
 ## Run 1 (measured)
 
 One billed investigation through `POST /investigations`. It was the first live run of EVAL-01 and the second billed
-run overall (run 2 is below); the first was INC-2041 through the CLI on 2026-10-26 (see docs/ARCHITECTURE.md).
+run overall (runs 2–4 are below); the first was INC-2041 through the CLI on 2026-10-26 (see docs/ARCHITECTURE.md).
 
 | | |
 |---|---|
@@ -121,10 +138,54 @@ run 1. HTTP success and schema acceptance did not produce a correct conclusion.
   (fixed offline). Not fixed: one open question asks which metrics were missing, although the inventory shows none
   were, because open questions are not checked against the inventory.
 
+## Run 3, after the baseline, wording and budget fixes (measured)
+
+`inv-8787259b0818`, from commit `1f62e98`; artifacts in `artifacts/live-runs/EVAL-01-run3/`.
+
+- **Decision:** all nine decision checks passed, so code accepted H1, "Database Connection Pool Saturation" (high).
+  The critic's final verdict was still "revise", with 8 unresolved issues, none citing direct evidence against H1.
+- **Metric baseline:** pool utilisation was "100 vs baseline 38.4 (+161%): changed". The model's window started at
+  09:00, before onset, so the baseline fix was not needed in this run.
+- **Answer key: `wrong_conclusion`.** The label requires the cause (pool size, reduction or config). H1 named the
+  mechanism; only its citations and the summary tied it to the config change.
+- **Weak grounding:** "Increased Load on Payments API" (medium) was supported only by a latency increase, while
+  the request rate was flat.
+
+**Fixed after run 3, offline only:**
+- The top hypothesis now names the change it cites when its title does not
+  (`app/agents/report_rules.py::name_cited_change`). The Reasoning prompt also asks the model to name the change.
+- A load claim cannot rest on symptom metrics when every request-rate sample shows no change. Those citations are
+  removed from support, and the flat request-rate peak is added against the claim (`app/agents/grounding.py`).
+- Tests: `tests/test_run3_fixes.py`.
+
+## Run 4, after the run 3 fixes (measured)
+
+`inv-7372f0aaa41c`, from commit `1f62e98` plus the uncommitted run 3 fixes; artifacts in
+`artifacts/live-runs/EVAL-01-run4/`.
+
+- **Worked as intended:**
+  - The model titled H1 "DB Connection Pool Size Reduced from 40 to 8 by CHG-E01-2" itself.
+  - The window started at onset, so the metrics fetch was widened to 09:12, and the pool was again "changed vs 38.4".
+  - The load hypothesis was low, with the flat request rate cited against it.
+  - The duplicated round-limit limitation was removed.
+- **Conclusion: inconclusive** (answer key: `missed_inconclusive`). Three checks failed:
+  - `direct_support`: one independent observation.
+  - `no_material_contradiction`: the model filed the timeout logs ("Timed out waiting for DB connection from pool")
+    as evidence *against* H1, and attached the change record to H2. Code does not judge what a log line means, so
+    this model error decided the result.
+  - `leader_clearly_ahead`: H2 and H4 were as confident as H1 when it was checked.
+- **A code defect found in this run, fixed offline:** one boundary sample in the error-rate baseline (7.61% at
+  10:00, before the 10:02 onset estimate) inflated the noise floor, so a jump from 0.2% to 7.61% read as "within the
+  normal range". Steps are now taken within the middle half of the baseline only
+  (`test_run4_error_rate_jump_is_a_change_not_noise`). H1 did not cite that sample, so this did not decide run 4.
+- **Input budget:** the largest bound was 44,639 for 11,707 actual tokens. No request was refused.
+
 ## Not verified
 
-- Whether the Phase 6–9 rules make real-model conclusions correct more often. Two runs of one case cannot show that,
-  and neither run named a cause.
+- Whether the fixes make real-model conclusions correct more often. Four runs of one case cannot show that, and
+  none was scored correct.
+- The noise-floor fix with a real model. It was found in run 4 and fixed afterwards, and no run has used it.
 - Any real-model comparison of the multi-agent system with the single-agent baseline.
+- Run-to-run variation. The same case gave different leading titles, confidences and citations each time.
 
 Offline heuristic scores changed (docs/EVALUATION.md), but they measure a naive rule, not the model.

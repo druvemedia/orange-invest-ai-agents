@@ -322,9 +322,12 @@ class RefIndex:
                                   reason=f"{name} = {r['value']:g}: {how}, so it cannot show a change or its absence")
         baseline = _median(head)
         # Robust noise estimate: scaled median absolute deviation, but never below the smallest step between
-        # distinct baseline values (quantised series such as an error rate alternating 0.2% / 0.3%).
+        # distinct baseline values (quantised series such as an error rate alternating 0.2% / 0.3%). Steps are taken
+        # within the middle half of the baseline only, so one boundary sample that already shows the incident (run 4:
+        # nine samples at 0.2% and one at 7.61%) cannot make a 37x jump look like noise.
         mad = 1.4826 * _median(sorted(abs(v - baseline) for v in head))
-        steps = [b - a for a, b in zip(sorted(set(head)), sorted(set(head))[1:])]
+        core = sorted({v for v in head if head[len(head) // 4] <= v <= head[(3 * len(head)) // 4]})
+        steps = [b - a for a, b in zip(core, core[1:])]
         noise = max(mad, min(steps, default=0.0))
         value = r["value"]
         change = metric_change(value, baseline)

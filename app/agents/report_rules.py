@@ -15,6 +15,9 @@ Each rule records what it changed, so the report shows both what the model wrote
    limitation restating the critic round limit is dropped when code already states it.
 6. If the model lists no assumptions while a causal hypothesis exists, the material assumption that the
    causal link is inferred rather than observed is added and marked as added by code.
+6b. The top hypothesis names the change it rests on: if it cites a change record as direct support that the
+   timeline does not rule out, and its title names that change by neither id nor summary, code adds the change's id,
+   summary and recorded old -> new value (run 3 of EVAL-01 named only the mechanism, "pool saturation").
 7. A change that came after the first observed symptom, or whose rollback did not end the symptoms
    (app.agents.temporal), gets an interpretation saying it cannot explain the onset. It says the change
    may have worsened the incident only when symptom metrics rose further after it.
@@ -32,6 +35,7 @@ from app.agents.contracts import (
     TemporalAssessment,
 )
 from app.agents.evidence import EvidenceClass, RefIndex
+from app.schemas.evidence import EvidenceSource
 from app.agents.grounding import asserts_increase, check_citations, words_before
 from app.agents.inventory import validate_availability_claims
 
@@ -60,6 +64,30 @@ def makes_causal_claim(text: str) -> bool:
         return True
     return any(not EVIDENCE_ITEMS.intersection(words_before(text, m.start(), EVIDENCE_REACH))
                for m in INDICATES.finditer(text))
+
+
+def describe_change(change: dict) -> str:
+    """'CHG-1: Reduce pool size, db.pool.max_size 40 → 8' from a change record (old/new only when recorded)."""
+    text = f"{change.get('change_id', '?')}: {change.get('summary', '').strip()}"
+    d = change.get("details") or {}
+    if isinstance(d, dict) and "old" in d and "new" in d:
+        text += f", {d.get('key', 'value')} {d['old']} → {d['new']}"
+    return text
+
+
+def name_cited_change(h, refs: RefIndex, timelines) -> tuple:
+    """Return the hypothesis with its title naming the change records it cites as direct support, and their ids."""
+    blocked = {c.change_ref for t in timelines if t.hypothesis_id == h.hypothesis_id for c in t.changes
+               if c.relation in ("follows_onset", "persisted_after_rollback")}
+    changes = [found[1] for leaf in refs.direct_leaves(h.supporting_refs)
+               if leaf not in blocked and (found := refs.record(leaf)) and found[0] is EvidenceSource.CHANGES]
+    changes = list({c.get("change_id"): c for c in changes}.values())[:2]
+    title = h.title.lower()
+    if not changes or any(str(c.get("change_id")).lower() in title or (c.get("summary") or "\0").strip().lower() in title
+                          for c in changes):
+        return h, []  # already names the change, by id or summary
+    title = f"{h.title} (cited change {'; '.join(describe_change(c) for c in changes)})"
+    return h.model_copy(update={"title": title}), [str(c.get("change_id")) for c in changes]
 
 
 def finalize_report(
@@ -98,6 +126,11 @@ def finalize_report(
         ranked.sort(key=lambda h: h.hypothesis_id != leader)
         notes.append(f"{leader} ranked first: it is the hypothesis the adjudication accepted.")
     ranked = [h.model_copy(update={"rank": i}) for i, h in enumerate(ranked, start=1)]
+    if ranked:
+        ranked[0], named = name_cited_change(ranked[0], refs, timelines)
+        if named:
+            notes.append(f"{ranked[0].hypothesis_id}: title extended by code so it names the change it cites "
+                         f"({', '.join(named)}).")
 
     # 4. Facts vs interpretations vs assumptions
     facts, interpretations, assumptions = [], list(report.interpretations), list(report.assumptions)

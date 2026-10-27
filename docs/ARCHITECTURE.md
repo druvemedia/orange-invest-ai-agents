@@ -215,6 +215,18 @@ with the exact query, records, completeness and warnings.
     timeouts". So an inference phrased that way ("the errors indicate a connection leak") stays a fact;
   - spotting a model limitation that restates the critic round limit, which is dropped when code already states
     it. Other duplicates are removed only when the wording is identical.
+- **Rules added after live runs 3 and 4:**
+  - **The top hypothesis names its cited change.** If it cites a change record as direct support that the timeline
+    does not rule out, and its title names that change by neither id nor summary, code appends the change's id,
+    summary and recorded old → new value. This changes wording only, not the decision.
+  - **Load claims.** A claim of increased load or traffic cannot rest on symptom metrics (latency, errors) when every
+    request-rate sample shows no change. Request-rate metrics are recognised by name (request, rps, throughput,
+    traffic) on any service. With no request-rate data, the rule does nothing.
+  - **Noise floor.** The smallest-step noise floor uses only the middle half of the baseline, so one boundary sample
+    that already shows the incident cannot hide a change.
+- **Model citation errors are not corrected.** Code checks what a citation *is* (its class, timing and source), not
+  what it *means*. In run 4 the model filed log lines that support its leading hypothesis as evidence against it, and
+  the adjudication stayed inconclusive.
 - **Timeline checks.**
   - The tolerances are fixed: ±60 s, a 5-minute rollback settle period, and 25% for "worsened".
   - Delayed-effect changes aren't modelled.
@@ -420,7 +432,8 @@ The SDK validates the model's text against the output model inside `responses.pa
 our own validation. `OpenAIClient.calls` records each call's agent, outcome, latency and token
 usage (no content), and the CLI prints these totals.
 
-**Live verification status: three billed runs, all with `gpt-4o-mini` and SDK 3.37.0.** The first was one run of
+**Live verification status: five completed billed runs, all with `gpt-4o-mini` and SDK 3.37.0** (and one cancelled
+submission). The first was one run of
 `python -m app.cli INC-2041`:
 - 9 model calls, all HTTP 200, with all six output schemas accepted as strict structured output.
 - The investigation `completed` in 104 s and 17 attempts, using 55,052 input and 5,743 output tokens.
@@ -439,5 +452,10 @@ input and 3,989 output tokens, 55.9 s. The live API accepted the extended report
 model-written, but it was again inconclusive with the correct cause ranked first. Outputs are in
 `artifacts/live-runs/EVAL-01-run2/`.
 
-The first two runs predate the Phase 6 and 7 decision logic; the third is its only real-model observation. Three runs
-verify the integration; they are not a measurement of reasoning quality. See README, "Live smoke test".
+Runs 3 and 4 of EVAL-01 (`artifacts/live-runs/EVAL-01-run3/`, `-run4/`) followed further fixes:
+- **Run 3** concluded with all decision checks passing, but its top hypothesis named only the mechanism, so the
+  answer key scores it a wrong conclusion.
+- **Run 4** named the cause but stayed inconclusive, because the model cited the timeout logs against it.
+
+All five runs verify the integration; none is a measurement of reasoning quality, and no EVAL-01 run has scored
+correct. See `docs/LIVE_RUN_EVAL01_ANALYSIS.md`.

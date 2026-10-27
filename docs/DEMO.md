@@ -5,7 +5,8 @@ the model ("the most recent change is the cause, otherwise the most frequent err
 **not an AI model**; the page and every report say so too. Real-model behaviour is shown only from the preserved
 live runs (step 6). **Never switch to the paid provider during the demo.**
 
-All outputs quoted below were produced by these exact commands on commit `9abc762`. Job IDs (`inv-…`) differ on
+Steps 1–5 and 7 are offline and free. Step 6 shows **recorded** real-model runs; nothing in this demo calls OpenAI.
+All outputs quoted below were produced by these exact commands (checked again after the run 4 fixes). Job IDs (`inv-…`) differ on
 every run. The CLI writes tool and engine log lines to stderr; the commands below add `2>/dev/null` to hide them.
 
 ## Setup (before recording, about 1 minute)
@@ -13,7 +14,7 @@ every run. The CLI writes tool and engine log lines to stderr; the commands belo
 ```zsh
 cd "<project root>"
 source .venv/bin/activate
-python -m pytest -q                                   # expect: 462 passed
+python -m pytest -q                                   # expect: 581 passed
 LLM_PROVIDER=offline-heuristic python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
@@ -29,8 +30,8 @@ root with the virtual environment active. The env var overrides `.env`, so a con
 | 3 | 1:30–2:15 | Source **EVAL-02** (the reporter blames a deploy), **Investigate** | "The naive rule picks the deploy, but **Timeline checks** say *change follows onset*: the first symptom (database disk usage, 13:35) came 17 minutes before the deploy (13:52), so code caps it to low and the result is **inconclusive**, not confidently wrong. The real cause, a full disk, is only ranked second at low; naming it needs a model." |
 | 4 | 2:15–2:50 | Source **EVAL-07** (metrics tool simulated as down), then **EVAL-09** | "EVAL-07: **Evidence availability** shows `ev.metrics` failed. That's a gap, not proof that nothing happened, and the result stays inconclusive. EVAL-09 has no anomaly: *No hypothesis could be grounded*, an honest inconclusive." |
 | 5 | 2:50–3:30 | Terminal 2: `python -m app.evaluation offline --out /tmp/orange-demo-eval`, then open `/tmp/orange-demo-eval/report.md` | "The same 10 labelled cases run through the multi-agent system and a single-agent baseline with the same tools and rules: strict 0.4, lenient 0.6, confidently wrong 0.0 for both. These numbers measure the **heuristic stand-in and the harness, not real-model quality**, and don't show that either architecture is better." |
-| 6 | 3:30–4:10 | `artifacts/live-runs/EVAL-01-run2/live_report.md` (Ranked hypotheses, Decision, Timeline checks), then `docs/LIVE_RUN_EVAL01_ANALYSIS.md` | "Two real gpt-4o-mini runs of EVAL-01, single observations, not a benchmark. Both ranked the correct cause first but concluded **inconclusive**. In run 2, after the fixes, the extended report format was accepted and timeline and independence checks passed, but the model marked the evidence insufficient. Its metrics window started at onset, so 100% pool use looked 'normal'. That's a known limitation we haven't fixed." |
-| 7 | 4:10–4:30 | Terminal 2: `python -m pytest -q` | "462 offline tests, no network, no key. Limits: synthetic evidence only, **no authentication** (keep it on localhost), and jobs live in memory, so they're lost on restart." |
+| 6 | 3:30–4:10 | `docs/LIVE_RUN_EVAL01_ANALYSIS.md` (the four-run table), then `artifacts/live-runs/EVAL-01-run4/live_report.md` (Ranked hypotheses, Decision) | "This is **real gpt-4o-mini**, recorded earlier: four billed runs of EVAL-01, single observations, not a benchmark. Every run ranked the pool-size change or its effect first and cited the key evidence, but **none scored correct** against the answer key. Run 3 concluded but named only the mechanism, pool saturation; run 4 named the cause but stayed inconclusive, because the model filed the timeout logs as evidence *against* it. Each run exposed defects we fixed and tested, and each fix is labelled with whether a real model has used it." |
+| 7 | 4:10–4:30 | Terminal 2: `python -m pytest -q` | "581 offline tests, no network, no key. Real model calls need an explicit opt-in, `LLM_ALLOW_BILLED_CALLS=true`, and every request is checked against an input-token budget before it is sent. Limits: synthetic evidence only, **no authentication** (keep it on localhost), and jobs live in memory, so they're lost on restart." |
 
 Optional (+30 s), the same flow over the API:
 
@@ -77,7 +78,7 @@ $ python -m app.evaluation offline --out /tmp/orange-demo-eval
 | The web page misbehaves | Use the CLI commands above (steps 2–4). Add `--format markdown` for the full report with citations, decision and timeline sections. |
 | Server won't start | The CLI doesn't need the server: `LLM_PROVIDER=offline-heuristic python -m app.cli EVAL-02 --format markdown 2>/dev/null`. |
 | Anything during step 5 | Open the committed `evaluation_results/offline-heuristic/report.md`; it has the same scores. |
-| Tempted to "try it live" | Don't. Live calls are billed, about a minute each, and not reproducible on camera. Show the preserved runs instead (step 6). |
+| Tempted to "try it live" | Don't. Live calls are billed (about $0.01–0.02 and 1–1.5 minutes each), need `LLM_ALLOW_BILLED_CALLS=true`, and give a different answer each run. Show the preserved runs instead (step 6). |
 
 Avoid running `python -m app.evaluation offline` without `--out` during the demo: it rewrites the committed results
 (only timestamps and latencies change, but the working tree becomes dirty).
