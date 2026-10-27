@@ -38,6 +38,163 @@ data/fixtures/       synthetic JSONL evidence shared by all phases (see data/REA
 docs/                design notes
 ```
 
+## Diagrams
+
+Three views of the same system, drawn from the code. Agents never call each other: each agent is a task
+handler, the engine runs tasks when their dependencies finish, and agents exchange only typed task results stored
+in the shared investigation state.
+
+### System architecture
+
+```mermaid
+flowchart TB
+    subgraph Entry["Entry points"]
+        UI["Web UI: GET /"]
+        API["REST API: /investigations, /capabilities, /evidence-sources, /health"]
+        CLI["CLI: python -m app.cli"]
+    end
+    subgraph Svc["InvestigationService (app/product/service.py)"]
+        Jobs["In-memory jobs, last 50 kept<br/>at most API_MAX_ACTIVE_INVESTIGATIONS running (else HTTP 429)<br/>hard stop: deadline + 60 s"]
+        Guard["Model selection (app/factory.py)<br/>openai only with LLM_ALLOW_BILLED_CALLS=true (else HTTP 503)<br/>offline-heuristic: keyless rule-based stand-in"]
+    end
+    subgraph Eng["InvestigationEngine (app/orchestration/engine.py)"]
+        Sched["Scheduler: runs ready tasks, up to 5 at once<br/>per-attempt timeout, retries only retryable errors<br/>budgets: 40 tasks, 80 attempts, 300 s deadline"]
+        State[("Shared investigation state<br/>task specs, attempts, typed outputs, events")]
+    end
+    subgraph Agents["Six agents (app/agents), each a task handler"]
+        Orch["Orchestrator: scope and task plan"]
+        Obs["Observability: logs and metrics findings"]
+        Dep["Dependency: change and topology findings"]
+        Rea["Reasoning: competing ranked hypotheses"]
+        Cri["Critic: verdict and evidence requests"]
+        Rep["Reporting (finalizer): report, code rules, adjudication"]
+    end
+    subgraph Tools["Five evidence tools (app/tools) over synthetic data, with fault injection"]
+        T1["search_logs"]
+        T2["query_metrics"]
+        T3["get_change_history"]
+        T4["get_service_dependencies"]
+        T5["search_historical_incidents"]
+    end
+    LLM["LLMClient: OpenAIClient (gpt-4o-mini; 64k input budget, 4k output per request,<br/>SDK retries off) or HeuristicLLMClient (offline)"]
+    UI --> API
+    API --> Jobs
+    CLI --> Jobs
+    Guard --> Jobs
+    Jobs --> Sched
+    Sched <--> State
+    Sched -- "runs agent tasks" --> Agents
+    Sched -- "runs evidence tasks" --> Tools
+    Agents -- "typed results; follow-up task specs" --> State
+    Tools -- "EvidenceResult: records, completeness, errors" --> State
+    Agents -- "structured-output requests" --> LLM
+    State -- "final report view" --> Jobs
+```
+
+### Investigation flow
+
+```mermaid
+flowchart TD
+    A["Incident submitted (API, UI or CLI)"] --> B{"Request valid and<br/>evidence source known?"}
+    B -- no --> B1["HTTP 422, nothing runs"]
+    B -- yes --> C{"Model available?<br/>billing opt-in for openai"}
+    C -- no --> C1["HTTP 503 (CLI exit 2), no client created"]
+    C -- yes --> D{"Fewer than max active jobs?"}
+    D -- no --> D1["HTTP 429 with Retry-After"]
+    D -- yes --> E["Job queued (HTTP 202), engine starts"]
+    E --> F["Orchestrator proposes scope; code bounds it<br/>(model failure: retry once, then default scope)"]
+    F --> G["Evidence tasks run in parallel: logs, metrics, changes,<br/>dependencies per focus service, history"]
+    G --> G1{"Tool failed?"}
+    G1 -- "retryable" --> G2["Retry once"]
+    G1 -- "still failing" --> G3["Recorded as a gap; downstream agents still run"]
+    G1 -- "no" --> H
+    G2 --> H
+    G3 --> H
+    H["Observability and Dependency findings, in parallel<br/>(model failure: retry once, then the task fails)"] --> I["Reasoning: competing hypotheses, each with<br/>supporting and contradicting evidence"]
+    I --> J["Code checks: citations exist, evidence classes,<br/>metric baselines, timeline, confidence caps"]
+    J --> K{"Critic verdict"}
+    K -- "revise (or insufficient evidence with<br/>valid new requests), a round left" --> L["Valid evidence requests become follow-up tasks;<br/>next Reasoning and Critic round (2 rounds at most)"]
+    L --> I
+    K -- "accept, round limit reached,<br/>or insufficient with nothing new to fetch" --> M["Reporting (finalizer, after all other tasks end)"]
+    L -. "40-task budget reached: follow-ups not added" .-> M
+    M --> N{"Adjudication: all decision checks pass?"}
+    N -- yes --> O["probable_cause_identified"]
+    N -- no --> P["inconclusive, with the failed checks"]
+    O --> Q["Final report: ranked hypotheses, cited evidence,<br/>facts vs interpretations vs assumptions, limitations"]
+    P --> Q
+    M -. "reporting model fails" .-> R["Deterministic fallback report, inconclusive"]
+    E -. "300 s deadline: running tasks cancelled, rest skipped" .-> R
+    E -. "80-attempt budget spent: remaining tasks skipped" .-> R
+    E -. "360 s hard stop" .-> S["Job failed, no report"]
+    R --> Q
+```
+
+### Agent invocation sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client (UI, API or CLI)
+    participant S as InvestigationService
+    participant E as Engine
+    participant ST as Shared state
+    participant O as Orchestrator
+    participant T as Evidence tools
+    participant OB as Observability
+    participant D as Dependency
+    participant R as Reasoning
+    participant CR as Critic
+    participant RP as Reporting
+    C->>S: submit incident
+    S-->>C: job id, status queued (HTTP 202)
+    S->>E: run investigation
+    E->>O: orchestrate task
+    O-->>E: scope and planned tasks
+    E->>ST: record scope, add tasks
+    par evidence tasks, up to 5 at once
+        E->>T: search_logs
+        E->>T: query_metrics
+        E->>T: get_change_history
+        E->>T: get_service_dependencies (each focus service)
+        E->>T: search_historical_incidents
+    end
+    T-->>ST: EvidenceResult per task (or a recorded failure)
+    par agents whose evidence is ready
+        E->>OB: observability (logs, metrics from state)
+        E->>D: dependency (changes, topology from state)
+    end
+    OB-->>ST: observations and metric summaries
+    D-->>ST: change and topology findings
+    E->>R: reasoning.r1 (findings and all evidence)
+    R-->>ST: hypotheses after citation checks
+    E->>CR: critic.r1
+    CR-->>ST: verdict, issues, validated evidence requests
+    loop while the verdict is not accept and rounds remain (2 at most)
+        alt revise (or insufficient evidence with valid new requests), within the task budget
+            CR-->>E: follow-up tasks (valid evidence requests, reasoning.rN+1, critic.rN+1)
+            par follow-up evidence
+                E->>T: requested queries
+            end
+            T-->>ST: new evidence
+            E->>R: reasoning.rN+1 (sees critique and new evidence)
+            R-->>ST: revised hypotheses
+            E->>CR: critic.rN+1
+            CR-->>ST: verdict
+        else accept, or insufficient evidence with nothing new to fetch
+            CR-->>ST: loop ends
+        end
+    end
+    E->>RP: report (finalizer, after every other task has ended)
+    RP-->>ST: final report (code rules and adjudication applied)
+    E-->>S: investigation result
+    S-->>S: build report view (every citation resolved to its record)
+    Note over C,S: UI and API poll, CLI waits
+    C->>S: poll status
+    S-->>C: completed
+    C->>S: get report (JSON or Markdown)
+    S-->>C: final report
+```
+
 ## Conventions
 
 - Configuration comes only from environment variables / `.env`, read through
@@ -276,45 +433,7 @@ the registered tool's query schema before scheduling it. Each request is judged 
 
 ### Data flow and feedback loop
 
-Overview (Mermaid; the text figure below shows the same flow as tasks):
-
-```mermaid
-flowchart TD
-    Client["Web UI / REST API / CLI"] --> Service["InvestigationService<br/>billing opt-in, at most N active jobs, 360 s hard stop"]
-    Service --> Orch
-    subgraph Engine["Orchestration engine: shared investigation state (every task, attempt and result)"]
-        Orch["Orchestrator agent<br/>scope and task plan"]
-        Logs["search_logs"]
-        Metrics["query_metrics"]
-        Changes["get_change_history"]
-        Deps["get_service_dependencies"]
-        History["search_historical_incidents"]
-        Obs["Observability agent"]
-        Dep["Dependency agent"]
-        Reason["Reasoning agent<br/>ranked hypotheses"]
-        Critic["Critic agent<br/>verdict and evidence requests"]
-        Follow["Follow-up evidence tasks<br/>validated against tool schemas"]
-        Report["Reporting agent (finalizer)<br/>code rules and adjudication"]
-        Orch --> Logs
-        Orch --> Metrics
-        Orch --> Changes
-        Orch --> Deps
-        Orch --> History
-        Logs --> Obs
-        Metrics --> Obs
-        Changes --> Dep
-        Deps --> Dep
-        Obs --> Reason
-        Dep --> Reason
-        History --> Reason
-        Reason --> Critic
-        Critic -- "revise, rounds left" --> Follow
-        Follow --> Reason
-        Critic -- "accept or round limit" --> Report
-    end
-    Limits["Bounds: at most 2 critic rounds, 2 attempts per task, 40 tasks, 80 attempts,<br/>5 concurrent tasks, 300 s deadline; per model request 64k input and 4k output tokens"] -.-> Orch
-    Report --> Out["Final report: conclusion or inconclusive, ranked hypotheses,<br/>cited evidence, facts vs assumptions, limitations"]
-```
+The diagrams at the top of this document show the same flow; this figure shows it as engine tasks.
 
 ```
 orchestrate ─► ev.logs, ev.metrics ─────────► observability ─┐
