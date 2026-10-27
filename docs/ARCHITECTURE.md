@@ -387,7 +387,7 @@ The SDK validates the model's text against the output model inside `responses.pa
 our own validation. `OpenAIClient.calls` records each call's agent, outcome, latency and token
 usage (no content), and the CLI prints these totals.
 
-**Live verification status: two billed runs, both with `gpt-4o-mini` and SDK 3.37.0.** The first was one run of
+**Live verification status: three billed runs, all with `gpt-4o-mini` and SDK 3.37.0.** The first was one run of
 `python -m app.cli INC-2041`:
 - 9 model calls, all HTTP 200, with all six output schemas accepted as strict structured output.
 - The investigation `completed` in 104 s and 17 attempts, using 55,052 input and 5,743 output tokens.
@@ -401,5 +401,10 @@ The second was one run of EVAL-01 through the product API (2026-10-27): 9 model 
 output tokens, 67.7 s, inconclusive with the correct cause ranked first. Its outputs are preserved byte for byte in
 `artifacts/live-runs/EVAL-01/` and analysed in `docs/LIVE_RUN_EVAL01_ANALYSIS.md`.
 
-Both runs predate the Phase 6 and 7 decision logic, which has been tested only offline. Two runs verify the
-integration; they are not a measurement of reasoning quality. See README, "Live smoke test".
+The third was a second run of EVAL-01 through the API, from commit `9abc762` (2026-10-27): 8 model calls, 43,859
+input and 3,989 output tokens, 55.9 s. The live API accepted the extended report schema and the report was
+model-written, but it was again inconclusive with the correct cause ranked first. Outputs are in
+`artifacts/live-runs/EVAL-01-run2/`.
+
+The first two runs predate the Phase 6 and 7 decision logic; the third is its only real-model observation. Three runs
+verify the integration; they are not a measurement of reasoning quality. See README, "Live smoke test".

@@ -1,6 +1,6 @@
 # Live run artifacts: EVAL-01, 2026-10-27
 
-These are unmodified copies of the outputs of the **only** billed real-model investigation of EVAL-01. Their
+These are unmodified copies of the outputs of the **first** billed real-model investigation of EVAL-01 (the second is in `../EVAL-01-run2/`). Their
 SHA-256 checksums are in `SHA256SUMS` and match the originals recorded at the time.
 
 It was the second billed run overall. The first, of INC-2041 through the CLI on 2026-10-26, is summarised in

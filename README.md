@@ -27,7 +27,7 @@ described in [data/eval/README.md](data/eval/README.md).
 - [docs/TECHNICAL_NOTE.md](docs/TECHNICAL_NOTE.md): technical note (≤ 500 words)
 - [docs/DEMO.md](docs/DEMO.md): a 3–5 minute demo walkthrough
 - [docs/EVALUATION.md](docs/EVALUATION.md): evaluation method and metrics
-- [docs/LIVE_RUN_EVAL01_ANALYSIS.md](docs/LIVE_RUN_EVAL01_ANALYSIS.md): the preserved live run
+- [docs/LIVE_RUN_EVAL01_ANALYSIS.md](docs/LIVE_RUN_EVAL01_ANALYSIS.md): the two preserved live runs of EVAL-01
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the layout and the engine lifecycle,
 [docs/TOOLS.md](docs/TOOLS.md) for the tool contracts and failure handling, and
@@ -171,13 +171,15 @@ Without a usable model setting, the command exits with code 2 and makes no reque
 
 ### Live smoke test
 
-Live integration has been exercised in two billed runs with `gpt-4o-mini`. Both predate the Phase 6 and 7 decision
-logic. The first, on 2026-10-26:
+Live integration has been exercised in three billed runs with `gpt-4o-mini`. The first two predate the Phase 6 and 7
+decision logic. The first, on 2026-10-26:
 - 9 calls, all accepted; the investigation completed in 104 s using about 55k input and 5.7k output tokens.
 - The report was inconclusive.
 
 The second, of EVAL-01 through the API, is preserved in [artifacts/live-runs/EVAL-01/](artifacts/live-runs/EVAL-01/)
 with its analysis in [docs/LIVE_RUN_EVAL01_ANALYSIS.md](docs/LIVE_RUN_EVAL01_ANALYSIS.md).
+The third, of EVAL-01 again after the fixes, is in [artifacts/live-runs/EVAL-01-run2/](artifacts/live-runs/EVAL-01-run2/):
+the extended schema was accepted, but it was again inconclusive with the correct cause ranked first.
 Details are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). To repeat the controlled smoke test:
 
 1. Create `.env` from `.env.example` and set `LLM_PROVIDER=openai`, `LLM_MODEL` and `LLM_API_KEY`.

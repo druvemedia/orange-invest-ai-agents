@@ -1,9 +1,9 @@
-# Live run analysis: EVAL-01 (2026-10-27) and Phase 6 fixes
+# Live run analysis: EVAL-01 (2026-10-27), Phase 6 fixes and run 2
 
-## The run (measured)
+## Run 1 (measured)
 
-One billed investigation through `POST /investigations`. It is the only live run of EVAL-01 and the second billed
-run overall; the first was INC-2041 through the CLI on 2026-10-26 (see docs/ARCHITECTURE.md).
+One billed investigation through `POST /investigations`. It was the first live run of EVAL-01 and the second billed
+run overall (run 2 is below); the first was INC-2041 through the CLI on 2026-10-26 (see docs/ARCHITECTURE.md).
 
 | | |
 |---|---|
@@ -71,11 +71,52 @@ For EVAL-01 the timeline check reports **ordering ambiguous**, not a violation. 
 09:55 already shows saturation in the same 5-minute sampling interval as CHG-E01-2 at 09:55, so their order
 can't be determined. Ambiguous timing doesn't block the cause.
 
+## Run 2, after the Phase 6–9 fixes (measured)
+
+One more billed investigation of EVAL-01 through `POST /investigations`, from commit `9abc762` (the third billed run
+overall). Outputs are preserved unchanged in `artifacts/live-runs/EVAL-01-run2/`; run 1's artifacts were not touched.
+The gold label was read only after the run finished.
+
+| | |
+|---|---|
+| Job | `inv-ffb2e49e8b55` |
+| Model | `gpt-4o-mini` |
+| Duration | 55.9 s server-side |
+| Tasks / attempts | 14 / 14, none failed, no retries |
+| Model calls | 8, all HTTP 200 (orchestrator, dependency, observability, reasoning ×2, critic ×2, reporting) |
+| Tokens | 43,859 input, 3,989 output |
+| Report author | model gpt-4o-mini (not the deterministic fallback) |
+| Conclusion | **inconclusive**; final critic verdict "revise" at the round limit |
+
+**What this shows.** The live API accepted the extended structured-output schema, and the model filled the
+interpretations, would-confirm and would-disconfirm fields. Every citation resolved.
+
+**Adjudication.**
+- Failed: `hypotheses_available`, `leader_confident` and `leader_clearly_ahead`. The reasoning model set
+  `insufficient_evidence`, so code capped every hypothesis to low.
+- Passed: `direct_support` (5 observations from 2 independent sources, changes and logs), `no_material_contradiction`,
+  `no_credible_alternative`, `follow_ups_obtained` (1 follow-up, no matches) and `temporal_consistency` (CHG-E01-2 at 09:55
+  precedes the first symptom at 10:02 in the retrieved logs).
+
+**Against the gold label:** top-1 and top-3 correct, key-evidence recall 2/2, outcome `missed_inconclusive`, the same as
+run 1. HTTP success and schema acceptance did not produce a correct conclusion.
+
+**Defects observed (not fixed; documented only):**
+- **Baseline contamination.** The model scoped the metrics query to start at onset (10:00), so every pool sample was
+  post-incident. 100% utilisation was classified `no_change` and listed as *contradicting* the correct hypothesis.
+  The case data has 37–38% before onset. This is the known limit of an earliest-samples baseline: code does not
+  widen a window that starts at onset.
+- **Weak citations.** One hypothesis about "dependent services" cites an interpretation about the config change, and
+  another cites the unrelated orders deploy as support.
+- **Over-eager fact checks.** Two facts were moved to interpretations by mistake: "indicate" matches the causal-language
+  check, and "not rapidly increasing" matches the increase check, which ignores negation.
+- **Report noise.** The limitation "Critic round limit reached" appears twice. One open question asks which metrics
+  were missing, although the inventory shows none were.
+
 ## Not verified
 
-None of this has been tested against a real model. Specifically:
-- whether gpt-4o-mini fills the new report fields (`interpretations`, `would_confirm`, `would_disconfirm`)
-  sensibly, and whether the API accepts the extended schema. It uses the same field types as before;
-- whether real reports now reach correct conclusions more often.
+- Whether the Phase 6–9 rules make real-model conclusions correct more often. Two runs of one case cannot show that,
+  and neither run named a cause.
+- Any real-model comparison of the multi-agent system with the single-agent baseline.
 
 Offline heuristic scores changed (docs/EVALUATION.md), but they measure a naive rule, not the model.
