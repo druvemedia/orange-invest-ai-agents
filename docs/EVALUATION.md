@@ -31,7 +31,8 @@ LLM_PROVIDER=openai LLM_MODEL=gpt-4o-mini python -m app.evaluation live --max-co
 LLM_ALLOW_BILLED_CALLS=true python -m app.evaluation live --max-cost-usd 1 --confirm-billed                 # billed
 ```
 
-**Live mode safeguards.** Live mode has never been run. It requires all three of the following:
+**Live mode safeguards.** Live mode has been run once (see [Live results](#live-results-2026-10-27)). It requires
+all three of the following:
 - **`LLM_ALLOW_BILLED_CALLS=true`**: the same guard as the API and CLI.
 - **`--confirm-billed`**.
 - **`--max-cost-usd`**: the budget.
@@ -43,8 +44,9 @@ LLM_ALLOW_BILLED_CALLS=true python -m app.evaluation live --max-cost-usd 1 --con
 - the worst-case cost, assuming every request uses the full 64,000-token input budget and 4,000-token output limit;
 - a rough expected cost.
 
-The expected cost is the mean of the four measured multi-agent runs (about $0.012), applied to every run. The
-baseline's real cost has never been measured.
+The expected cost is the mean of the four measured multi-agent runs (about $0.012), applied to every run. In the
+2026-10-27 run the preflight expected about $0.24; the estimated spend was $0.13, because the baseline costs
+about a third of a multi-agent run.
 
 **When a live run refuses to start:**
 - the model has no recorded price (`app/evaluation/pricing.py`);
@@ -168,7 +170,79 @@ Offline results go to `evaluation_results/offline-heuristic/`. Live results go t
   direction) left every offline score and per-case outcome unchanged. Their effect was checked offline on live
   run 4's recorded evidence: the leading hypothesis's direct support grew from one to two independent sources, and
   nothing remained against it. That is a replay of recorded model output, not a new real-model measurement.
-- **Live results** would measure real models on 10 small, synthetic, author-written cases, one run each. That is
+- **Live results** measure a real model on 10 small, synthetic, author-written cases, one run each. That is
   enough to spot large differences, not small ones. The dataset author also wrote both systems, so case design may be
   unconsciously biased. Keyword matching can misjudge paraphrases; check `results.json` by hand.
-- **Status:** live evaluation has **not** been run. It needs explicit authorisation because it makes billed calls.
+- **Status:** the live evaluation has been run once, on 2026-10-27 (below). It needs explicit authorisation each
+  time because it makes billed calls.
+
+## Live results (2026-10-27)
+
+**Source of truth:** [`evaluation_results/live/20261027T090426Z/`](../evaluation_results/live/20261027T090426Z/): `report.md`, `results.json`,
+`per_case.csv`, a provenance `README.md` and `SHA256SUMS`. The figures below are copied from those files. These are
+real model calls; they are separate from the offline stand-in results above, which do not measure model accuracy.
+
+**Setup.**
+- Model `gpt-4o-mini`; code at commit `090c497` (leak-free prompts, evidence-verification rules, noise-floor fix).
+- Limits: 64,000 input and 4,000 output tokens per request, 120 s model timeout, 2 critic rounds, 3 evidence
+  requests per round, 300 s deadline per investigation.
+- 10 synthetic incidents. For each, the multi-agent system and then the baseline ran back to back, with the same
+  model, evidence, answer key, scoring and limits: 20 investigations.
+- Each investigation ran exactly once. No retries, no budget stop and no `not_run` runs. Budget $3.00; estimated
+  spend $0.1345.
+- Gold labels were loaded only after every investigation had finished.
+
+| Metric | Multi-agent | Single-agent baseline |
+|---|---|---|
+| Strict accuracy | 3/10 (30%) | 2/10 (20%) |
+| Lenient accuracy (acceptable inconclusive counts) | 5/10 (50%) | 4/10 (40%) |
+| Confidently wrong | 0/10 | 1/10 |
+| Inconclusive outcomes | 8/10 | 8/10 |
+| Failures | 0/10 | 0/10 |
+| Real cause ranked first (top-1; 9 gold cases) | 7/9 (78%) | 3/9 (33%) |
+| Real cause in the top 3 (9 gold cases) | 7/9 (78%) | 4/9 (44%) |
+| Distractor ranked first (9 gold cases) | 1/9 (EVAL-10) | 1/9 (EVAL-10) |
+| Key-evidence recall (mean, 9 gold cases) | 78% | 17% |
+| Citations pointing to real evidence | 242/242 | 117/117 |
+| Checked supporting citations that were unsupported | 0/82 | 0/29 |
+| Evidence gaps / timeouts | 9 / 2 | 5 / 0 |
+| Invalid model outputs (total) | 9 | 1 |
+| Tool calls / model calls per case (mean) | 8.1 / 8.6 | 8.6 / 3.5 |
+| Latency per investigation (mean / median / max) | 105 / 86 / 192 s | 26 / 26 / 44 s |
+| Tokens in / out (total) | 466k / 51k | 163k / 16k |
+| Estimated cost (total) | $0.101 | $0.034 |
+
+Outcomes per case:
+
+| Case | Multi-agent | Single-agent baseline |
+|---|---|---|
+| EVAL-01 | correct (high) | missed inconclusive |
+| EVAL-02 | missed inconclusive (true cause ranked first) | missed inconclusive |
+| EVAL-03 | missed inconclusive (true cause ranked first) | **wrong conclusion** |
+| EVAL-04 | acceptable inconclusive | acceptable inconclusive |
+| EVAL-05 | missed inconclusive (true cause ranked first) | missed inconclusive |
+| EVAL-06 | missed inconclusive | missed inconclusive |
+| EVAL-07 | acceptable inconclusive | acceptable inconclusive |
+| EVAL-08 | correct (high) | correct (medium) |
+| EVAL-09 | correct inconclusive | correct inconclusive |
+| EVAL-10 | missed inconclusive (distractor deploy ranked first) | missed inconclusive |
+
+**What this run shows.**
+- On this run the multi-agent system did better on strict and lenient accuracy, ranking, evidence discovery and
+  confidently wrong conclusions. It was about four times slower and three times more expensive.
+- **It does not show that the multi-agent system is better in general.** It is 10 cases with one run each: a
+  difference of one or two cases is noise, there is no statistical significance, and run-to-run variation is
+  unmeasured. The ranking and key-evidence gaps are larger, but they come from the same 9 cases.
+- Both approaches are often over-cautious (5 missed inconclusive outcomes each). Three multi-agent misses had the
+  true cause ranked first but did not meet the conclusion rule.
+- **EVAL-01** was solved correctly, with high confidence, by the multi-agent system: the first correct real-model
+  result on that case after four inconclusive or partial runs. That is one observation, not proof that the
+  verification rules improved accuracy in general.
+- **EVAL-09** has no true root cause; inconclusive is the correct answer, so it is excluded from the 9-case
+  ranking and key-evidence denominators.
+- "Unsupported" counts only the structural checks (`assess_citations`); whether a cited line *means* what the
+  hypothesis says is not verified by code.
+- Cost is estimated from reported token usage at list prices ($0.15 / $0.60 per million input / output tokens),
+  not reconciled against the provider's bill.
+- The provenance README says "with uncommitted changes": at write time the only uncommitted item was the run's own
+  output folder.

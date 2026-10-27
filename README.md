@@ -40,8 +40,8 @@ investigation with agents that:
 
 **Limitations (details in [section 14](#14-known-limitations)):**
 - Evidence is synthetic, with no authentication and in-memory jobs.
-- **No real-model run has scored correct** against the answer key.
-- There is **no real-model comparison** of the two approaches.
+- The real-model comparison of the two approaches is **one paired run of 10 synthetic cases** with gpt-4o-mini:
+  too small to establish statistical significance or general superiority ([section 12](#12-evaluation)).
 
 ## 3. Architecture overview
 
@@ -179,7 +179,7 @@ python -c "from app.core.config import get_settings; from app.llm import check_l
 
 The CLI prints the elapsed time, model calls and token totals at the end.
 
-**Live evaluation (billed, never run):** it needs `LLM_ALLOW_BILLED_CALLS=true`, `--confirm-billed` and a budget
+**Live evaluation (billed):** it needs `LLM_ALLOW_BILLED_CALLS=true`, `--confirm-billed` and a budget
 (`--max-cost-usd`). Preview the plan and cost first, without any call:
 
 ```zsh
@@ -238,9 +238,39 @@ curl -s http://127.0.0.1:8000/investigations/<investigation_id>/report.md    # M
   mechanism.
 - Run 4 used a Reasoning prompt example that revealed EVAL-01's answer (since removed, with a regression test), so
   it is not clean evidence of improvement.
-- The later noise-floor fix, the leak-free prompt and the evidence-verification rules have not been run against a
-  real model. The verification rules were checked only on run 4's recorded evidence.
-- There is no real-model multi-agent vs single-agent comparison.
+- The later noise-floor fix, the leak-free prompt and the evidence-verification rules were first run against a
+  real model in the paired live evaluation below.
+
+**Live evaluation, paired, real model** ([evaluation_results/live/20261027T090426Z/report.md](evaluation_results/live/20261027T090426Z/report.md)):
+- `gpt-4o-mini`, code at commit `090c497`, run on 2026-10-27. 10 synthetic incidents, both approaches run back to
+  back on each incident: 20 investigations, each run once, with no retries and no budget stop. Raw outputs, a
+  provenance README and `SHA256SUMS` are in [evaluation_results/live/20261027T090426Z/](evaluation_results/live/20261027T090426Z/).
+
+| Metric | Multi-agent | Single-agent baseline |
+|---|---|---|
+| Strict accuracy | 3/10 (30%) | 2/10 (20%) |
+| Lenient accuracy (acceptable inconclusive counts) | 5/10 (50%) | 4/10 (40%) |
+| Confidently wrong | 0/10 | 1/10 |
+| Real cause ranked first (9 cases with a root cause) | 7/9 (78%) | 3/9 (33%) |
+| Key evidence found (mean recall) | 78% | 17% |
+| Citations pointing to real evidence | 242/242 | 117/117 |
+| Checked supporting citations that were unsupported | 0/82 | 0/29 |
+| Mean latency per investigation | 105 s | 26 s |
+| Tokens in / out | 466k / 51k | 163k / 16k |
+| Estimated cost | $0.101 | $0.034 |
+
+- On this run the multi-agent system did better on accuracy, ranking, evidence discovery and confidently wrong
+  conclusions. It was about four times slower and three times more expensive.
+- **This does not show that the multi-agent system is better in general.** It is 10 cases with one run each, so a
+  difference of one or two cases is noise, and there is no statistical significance.
+- Both approaches were often over-cautious: each had 5 "missed inconclusive" outcomes. In 3 of the multi-agent
+  ones (EVAL-02, 03, 05) the true cause was already ranked first.
+- EVAL-01 was solved correctly, with high confidence, by the multi-agent system: the first correct real-model
+  result on that case. That is one observation, not proof of a general improvement. The baseline stayed
+  inconclusive on it.
+- EVAL-09 has no true root cause (inconclusive is correct), so it is excluded from the ranking denominator.
+- Costs are estimated from reported token usage at list prices; they have not been reconciled against the
+  provider's bill. Accuracy is scored by keyword matching against the gold labels.
 
 ## 13. Development record
 
@@ -263,9 +293,9 @@ The project was developed with Claude Code. The redacted conversation is in
 - Live runs need network access and are billed.
 
 **Not validated:**
-- the live evaluation mode, which has never been run;
+- repeated live runs: the live evaluation has run once, so its run-to-run variation is unmeasured;
 - the Windows setup steps;
-- real-model behaviour of the most recent fixes.
+- real-model behaviour of the most recent fixes beyond that single live run.
 
 More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), "Known limits", and [docs/SRS.md](docs/SRS.md), section 10.
 
@@ -284,6 +314,7 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), "Known limits", and [
 | `tests/` | 626 automated tests |
 | `evaluation_results/offline-heuristic/` | offline evaluation results |
 | `artifacts/live-runs/` | the four real-model runs of EVAL-01, each with a README and `SHA256SUMS` |
+| `evaluation_results/live/20261027T090426Z/` | the paired live evaluation (both approaches, 10 cases), with a README and `SHA256SUMS` |
 | `docs/ARCHITECTURE.md` | diagrams, engine, agents, grounding, termination, known limits |
 | `docs/SRS.md` | requirements, status and traceability |
 | `docs/TOOLS.md`, `docs/EVALUATION.md` | tool contracts; evaluation method and metrics |
@@ -298,7 +329,7 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), "Known limits", and [
 | Runnable implementation and setup instructions | `app/`; sections 7–11 above |
 | Architecture diagram and explanation | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#diagrams): system, flow and sequence diagrams (Mermaid) |
 | Synthetic dataset and automated tests | `data/eval/`, `data/fixtures/`; `tests/` (626 tests) |
-| Evaluation results comparing both approaches | `evaluation_results/offline-heuristic/` (offline stand-in only; see section 12) and `docs/LIVE_RUN_EVAL01_ANALYSIS.md` |
+| Evaluation results comparing both approaches | `evaluation_results/live/20261027T090426Z/` (real model, paired; see section 12), `evaluation_results/offline-heuristic/` (offline stand-in only) and `docs/LIVE_RUN_EVAL01_ANALYSIS.md` |
 | Technical note (≤ 500 words) | [docs/TECHNICAL_NOTE.md](docs/TECHNICAL_NOTE.md) |
 | AI coding assistant transcript | [docs/AI_TRANSCRIPT.md](docs/AI_TRANSCRIPT.md) |
 | Requirements and traceability | [docs/SRS.md](docs/SRS.md) |

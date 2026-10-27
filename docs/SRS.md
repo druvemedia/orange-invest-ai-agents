@@ -51,11 +51,11 @@ Architecture, flow and sequence diagrams are in [ARCHITECTURE.md](ARCHITECTURE.m
 | FR-13 | Report view with every citation resolved to its record; JSON and Markdown | `app/product/report_view.py` | `test_report_resolves_every_citation_to_retrieved_evidence`, `tests/test_report_view.py` | Verified |
 | FR-14 | Recover from tool and agent failures (retry retryable errors once, record gaps, fall back deterministically) | `app/orchestration/engine.py`, `app/agents/base.py::LLMAgent.__call__`, `app/tools/faults.py` | `test_tool_failure_and_partial_evidence_are_reported`, `test_invalid_model_output_exhausts_bounded_retries`, `test_injected_faults_return_failed_results` | Verified |
 | FR-15 | Single-agent baseline with the same tools, budgets, rules and report contract | `app/baseline/single_agent.py` | `tests/test_baseline.py` | Verified offline |
-| FR-16 | Evaluation harness: 10 labelled cases, both approaches, accuracy with denominators, grounding, unsupported citations, evidence gaps, timeouts, tool calls, latency, tokens, estimated cost, configuration | `app/evaluation/` | `tests/test_eval_runner.py`, `tests/test_eval_metrics.py`, `tests/test_eval_dataset.py`, `tests/test_live_evaluation.py` | Partial: offline mode run; live mode implemented but **never run** |
+| FR-16 | Evaluation harness: 10 labelled cases, both approaches, accuracy with denominators, grounding, unsupported citations, evidence gaps, timeouts, tool calls, latency, tokens, estimated cost, configuration | `app/evaluation/` | `tests/test_eval_runner.py`, `tests/test_eval_metrics.py`, `tests/test_eval_dataset.py`, `tests/test_live_evaluation.py` | Partial: offline mode run; live mode run once (2026-10-27, gpt-4o-mini, 10 cases × 2 approaches) |
 | FR-17 | Billed model calls only with an explicit opt-in | `app/llm/factory.py::check_llm_settings` | `test_without_opt_in_no_client_is_built`, `tests/test_billing_guard.py` | Verified |
 | FR-18 | Refuse a model request whose input could exceed the per-request budget, before sending | `app/llm/openai_client.py::input_token_bound` | `test_an_oversized_request_is_refused_before_anything_is_sent`, `tests/test_input_budget.py` | Verified; no request refused in real runs 3–4 |
-| FR-19 | Verify evidence against each hypothesis: named changes cited; mechanism-consistent failure logs not counted against it; both-ways citations dropped; metric direction checked against claimed increases; structured per-citation assessment (exists, class, sources, services, relevance, flags) | `app/agents/grounding.py::check_citations`, `assess_citations` | `tests/test_verification.py` (run 4's real evidence and counterexamples) | Partial: verified offline; checked on run 4's recorded evidence only; no new real-model run |
-| FR-20 | Fair live evaluation: the same inputs, tools, model and scoring for both approaches; two opt-ins and a budget; preflight estimate; budget stop with `not_run` runs kept; unique output folders; README and checksums | `app/evaluation/live.py`, `runner.py`, `__main__.py` | `tests/test_live_evaluation.py`, `test_live_evaluation_needs_both_opt_ins_and_a_budget` | Partial: implemented and tested offline; **never run** |
+| FR-19 | Verify evidence against each hypothesis: named changes cited; mechanism-consistent failure logs not counted against it; both-ways citations dropped; metric direction checked against claimed increases; structured per-citation assessment (exists, class, sources, services, relevance, flags) | `app/agents/grounding.py::check_citations`, `assess_citations` | `tests/test_verification.py` (run 4's real evidence and counterexamples) | Partial: verified offline on run 4's recorded evidence; active in the 2026-10-27 live run (one run of 10 cases) |
+| FR-20 | Fair live evaluation: the same inputs, tools, model and scoring for both approaches; two opt-ins and a budget; preflight estimate; budget stop with `not_run` runs kept; unique output folders; README and checksums | `app/evaluation/live.py`, `runner.py`, `__main__.py` | `tests/test_live_evaluation.py`, `test_live_evaluation_needs_both_opt_ins_and_a_budget` | Verified once: the 2026-10-27 live run (paired order, no `not_run`, README and checksums); one run only |
 
 ## 4. Non-functional requirements
 
@@ -150,7 +150,10 @@ The lifecycle is shown in [ARCHITECTURE.md](ARCHITECTURE.md#investigation-flow).
   - **None scored correct** against the unchanged answer key: three were inconclusive, and one named only the
     mechanism.
   - Run 4 used a prompt example that revealed EVAL-01's answer (since removed), so it is not clean evidence.
-- **Not done:** no real-model comparison of the multi-agent system with the single-agent baseline.
+- **Paired live evaluation** (`evaluation_results/live/20261027T090426Z/`, see [EVALUATION.md](EVALUATION.md#live-results-2026-10-27)):
+  `gpt-4o-mini`, 10 cases, both approaches, one run each. Multi-agent vs baseline: strict 3/10 vs 2/10, lenient
+  5/10 vs 4/10, confidently wrong 0/10 vs 1/10, real cause first 7/9 vs 3/9. The multi-agent system solved EVAL-01.
+  It was slower and more expensive. One run of 10 cases does not establish statistical significance.
 
 ## 10. Constraints, assumptions, limitations and future work
 
@@ -159,9 +162,9 @@ The lifecycle is shown in [ARCHITECTURE.md](ARCHITECTURE.md#investigation-flow).
   time) approximates the true onset. The provider's per-request overhead stays within the input-budget allowances.
 - **Limitations:** see [ARCHITECTURE.md](ARCHITECTURE.md), "Known limits", and [TECHNICAL_NOTE.md](TECHNICAL_NOTE.md).
   - Code checks citation structure, not meaning: the model can misfile evidence, as in run 4.
-  - The noise-floor fix and the leak-free prompt have no real-model run.
+  - The live comparison has run once; run-to-run variation is unmeasured.
 - **Future improvements:**
-  - a live evaluation of both approaches across all 10 cases, with repeated runs;
+  - repeated live evaluations of both approaches, to measure variation;
   - authentication and persistence;
   - real observability integrations.
 
@@ -176,8 +179,8 @@ The lifecycle is shown in [ARCHITECTURE.md](ARCHITECTURE.md#investigation-flow).
 | Ranked hypotheses, supporting/contradicting evidence, confidence, facts vs assumptions, inconclusive | `reasoning.py`, `report_rules.py`, `adjudication.py` | `tests/test_phase6_quality.py` | ARCHITECTURE, report view | Verified |
 | ≥ 10 synthetic incidents incl. misleading, conflicting, tool failures | `data/eval/` | `tests/test_eval_dataset.py` | data/eval/README.md | Verified |
 | Multi-agent vs single-agent baseline with the same tools | `app/baseline/single_agent.py` | `tests/test_baseline.py` | EVALUATION.md | Verified offline |
-| Accuracy, grounding, tool calls, latency, tokens | `app/evaluation/metrics.py`, `pricing.py` | `tests/test_eval_metrics.py`, `tests/test_live_evaluation.py` | EVALUATION.md | Partial: tokens and cost only in live mode, never run |
-| Evaluation comparison | `evaluation_results/offline-heuristic/`; live runner prepared (`app/evaluation/live.py`) | `tests/test_live_evaluation.py` | EVALUATION.md | Partial: offline stand-in only; the live comparison is prepared but not run |
+| Accuracy, grounding, tool calls, latency, tokens | `app/evaluation/metrics.py`, `pricing.py` | `tests/test_eval_metrics.py`, `tests/test_live_evaluation.py` | EVALUATION.md | Verified: tokens and cost measured in the 2026-10-27 live run |
+| Evaluation comparison | `evaluation_results/offline-heuristic/`; `evaluation_results/live/20261027T090426Z/` (`app/evaluation/live.py`) | `tests/test_live_evaluation.py` | EVALUATION.md | Partial: one paired live run of 10 cases; not statistically significant |
 | Runnable implementation and setup | README | full suite | README | Verified on macOS; Windows steps not run |
 | Architecture diagram and explanation | — | — | ARCHITECTURE "Diagrams" | Verified (Mermaid parsed and rendered with Mermaid 10.9.1) |
 | Synthetic dataset and automated tests | `data/`, `tests/` | 626 tests | README | Verified |

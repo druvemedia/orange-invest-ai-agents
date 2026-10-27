@@ -390,7 +390,8 @@ with the exact query, records, completeness and warnings.
       not checked: "pool size reduced" would wrongly match a pool-utilisation rise.
   - **What verification cannot do.** These are keyword and structure rules. A log's meaning, whether a change
     caused anything, and service relevance (assessed, not enforced) stay judgements. The rules were drawn from
-    run 4's failure, and counterexample tests guard them; no new real-model run has used them.
+    run 4's failure, and counterexample tests guard them. They were active in the 2026-10-27 paired live
+    evaluation (docs/EVALUATION.md), one run of 10 cases.
 - **Model citation errors are not corrected.** Code checks what a citation *is* (its class, timing and source), not
   what it *means*. In run 4 the model filed log lines that support its leading hypothesis as evidence against it, and
   the adjudication stayed inconclusive.
@@ -415,7 +416,8 @@ with the exact query, records, completeness and warnings.
   - The duplicate round-limit rule acted in runs 3 and 4.
   - The title rule and the load rule were active in run 4. The title rule did not need to act, and the saved report
     does not record whether the load rule acted.
-  - The noise-floor fix and the leak-free Reasoning prompt have no real-model run.
+  - The noise-floor fix and the leak-free Reasoning prompt ran in the 2026-10-27 paired live evaluation, one run
+    of 10 cases.
 
 ## Agents (Phase 3)
 
