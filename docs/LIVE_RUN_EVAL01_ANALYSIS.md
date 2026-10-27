@@ -15,7 +15,8 @@ interrupted; it produced no report.
 Every run ranked the pool-size change, or its direct effect, first, and every run cited both key evidence items
 (the change record and a pool log line). **No run has yet produced the correct result: the cause named and
 accepted.** Runs 1, 2 and 4 named the cause but did not conclude. Run 3 concluded, but its title named the
-mechanism, not the cause. Costs are at $0.15 / $0.60 per million input / output tokens.
+mechanism, not the cause. Run 4's prompt contained an example that mirrored EVAL-01's answer (see run 4), so its
+well-named title is not clean evidence. Costs are at $0.15 / $0.60 per million input / output tokens.
 
 ## Run 1 (measured)
 
@@ -163,10 +164,18 @@ run 1. HTTP success and schema acceptance did not produce a correct conclusion.
 `inv-7372f0aaa41c`, from commit `1f62e98` plus the uncommitted run 3 fixes; artifacts in
 `artifacts/live-runs/EVAL-01-run4/`.
 
+**Disclosure: this run's Reasoning prompt revealed EVAL-01's answer.** A new prompt line gave the example "Pool size
+cut 40 to 8 by CHG-1", which mirrors this case's root cause. The model's well-named title may have been primed by
+that example, so it is **not clean evidence** that the model, or the fix, names causes better. The example was found
+in the final audit and replaced with a neutral one (`tests/test_prompt_leakage.py` now checks every prompt against
+every label). This run was not repeated.
+
 - **Worked as intended:**
-  - The model titled H1 "DB Connection Pool Size Reduced from 40 to 8 by CHG-E01-2" itself.
+  - The model titled H1 "DB Connection Pool Size Reduced from 40 to 8 by CHG-E01-2" itself, but possibly primed by
+    the leaked example.
   - The window started at onset, so the metrics fetch was widened to 09:12, and the pool was again "changed vs 38.4".
-  - The load hypothesis was low, with the flat request rate cited against it.
+  - The load hypothesis was low, with the flat request rate cited against it. The saved report does not record
+    whether the code's load rule or the model put it there.
   - The duplicated round-limit limitation was removed.
 - **Conclusion: inconclusive** (answer key: `missed_inconclusive`). Three checks failed:
   - `direct_support`: one independent observation.
@@ -187,5 +196,6 @@ run 1. HTTP success and schema acceptance did not produce a correct conclusion.
 - The noise-floor fix with a real model. It was found in run 4 and fixed afterwards, and no run has used it.
 - Any real-model comparison of the multi-agent system with the single-agent baseline.
 - Run-to-run variation. The same case gave different leading titles, confidences and citations each time.
+- Any real-model run with the leak-free Reasoning prompt. The fixed prompt has not been sent to a model.
 
 Offline heuristic scores changed (docs/EVALUATION.md), but they measure a naive rule, not the model.

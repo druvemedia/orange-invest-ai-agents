@@ -41,7 +41,8 @@ When the evidence allows more than one explanation, give each one. For every hyp
   Look actively for contradicting evidence.
 - missing_information: what evidence would confirm or rule it out.
 - title: if a change (deployment, config change, flag) is the proposed cause, name that change and what it
-  changed, not only the symptom it produced (e.g. "Pool size cut 40 to 8 by CHG-1", not "Pool saturation").
+  changed, not only the symptom it produced (e.g. "TLS certificate replaced with an expired one by CHG-1", not
+  "Handshake errors").
 - confidence: low, medium or high, with a rationale. High needs direct, independent evidence
   from more than one source and nothing contradicting it.
 Set insufficient_evidence to true if the evidence cannot discriminate between explanations, or if

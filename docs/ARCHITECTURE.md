@@ -242,7 +242,13 @@ with the exact query, records, completeness and warnings.
   - Several observations from one source are "unknown", never independent.
 - **Decision policy.** "Material contradiction" (direct counter-evidence spanning at least as many sources as
   the support) is a policy choice. So is the requirement of two independent sources.
-- **Verification.** All Phase 6–7 rules are verified offline only. No real-model run has exercised them.
+- **Verification.** gpt-4o-mini runs 2–4 of EVAL-01 exercised these rules, the evidence classes, timeline and
+  independence checks, the evidence inventory, facts vs interpretations and the adjudication, but only on one case.
+  - The pre-onset metric baseline ran in runs 3 and 4; its widened fetch was needed only in run 4.
+  - The duplicate round-limit rule acted in runs 3 and 4.
+  - The title rule and the load rule were active in run 4. The title rule did not need to act, and the saved report
+    does not record whether the load rule acted.
+  - The noise-floor fix and the leak-free Reasoning prompt have no real-model run.
 
 ## Agents (Phase 3)
 
@@ -269,6 +275,46 @@ the registered tool's query schema before scheduling it. Each request is judged 
   already constrains it. The per-request check is the second line of defence.
 
 ### Data flow and feedback loop
+
+Overview (Mermaid; the text figure below shows the same flow as tasks):
+
+```mermaid
+flowchart TD
+    Client["Web UI / REST API / CLI"] --> Service["InvestigationService<br/>billing opt-in, at most N active jobs, 360 s hard stop"]
+    Service --> Orch
+    subgraph Engine["Orchestration engine: shared investigation state (every task, attempt and result)"]
+        Orch["Orchestrator agent<br/>scope and task plan"]
+        Logs["search_logs"]
+        Metrics["query_metrics"]
+        Changes["get_change_history"]
+        Deps["get_service_dependencies"]
+        History["search_historical_incidents"]
+        Obs["Observability agent"]
+        Dep["Dependency agent"]
+        Reason["Reasoning agent<br/>ranked hypotheses"]
+        Critic["Critic agent<br/>verdict and evidence requests"]
+        Follow["Follow-up evidence tasks<br/>validated against tool schemas"]
+        Report["Reporting agent (finalizer)<br/>code rules and adjudication"]
+        Orch --> Logs
+        Orch --> Metrics
+        Orch --> Changes
+        Orch --> Deps
+        Orch --> History
+        Logs --> Obs
+        Metrics --> Obs
+        Changes --> Dep
+        Deps --> Dep
+        Obs --> Reason
+        Dep --> Reason
+        History --> Reason
+        Reason --> Critic
+        Critic -- "revise, rounds left" --> Follow
+        Follow --> Reason
+        Critic -- "accept or round limit" --> Report
+    end
+    Limits["Bounds: at most 2 critic rounds, 2 attempts per task, 40 tasks, 80 attempts,<br/>5 concurrent tasks, 300 s deadline; per model request 64k input and 4k output tokens"] -.-> Orch
+    Report --> Out["Final report: conclusion or inconclusive, ranked hypotheses,<br/>cited evidence, facts vs assumptions, limitations"]
+```
 
 ```
 orchestrate ─► ev.logs, ev.metrics ─────────► observability ─┐
@@ -455,7 +501,9 @@ model-written, but it was again inconclusive with the correct cause ranked first
 Runs 3 and 4 of EVAL-01 (`artifacts/live-runs/EVAL-01-run3/`, `-run4/`) followed further fixes:
 - **Run 3** concluded with all decision checks passing, but its top hypothesis named only the mechanism, so the
   answer key scores it a wrong conclusion.
-- **Run 4** named the cause but stayed inconclusive, because the model cited the timeout logs against it.
+- **Run 4** named the cause but stayed inconclusive, because the model cited the timeout logs against it. Its
+  Reasoning prompt contained an example that mirrored EVAL-01's answer (since replaced), so its naming of the cause is
+  not clean evidence.
 
 All five runs verify the integration; none is a measurement of reasoning quality, and no EVAL-01 run has scored
 correct. See `docs/LIVE_RUN_EVAL01_ANALYSIS.md`.
