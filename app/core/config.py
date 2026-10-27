@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     # Per-request timeout passed to the provider SDK. Headroom for slow responses, not a speed-up.
     llm_timeout_seconds: float = Field(default=120.0, gt=0, le=600)
     llm_max_output_tokens: int = Field(default=4000, ge=256, le=32000)
+    # Per-request input budget, checked before sending: a request whose input could exceed it is refused unsent.
+    llm_max_input_tokens: int = Field(default=64_000, ge=1_000, le=128_000)
 
     # Investigation limits used by the agents' orchestrator.
     agent_max_critic_rounds: int = Field(default=2, ge=1, le=5)

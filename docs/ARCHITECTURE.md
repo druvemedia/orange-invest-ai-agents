@@ -400,6 +400,12 @@ A report always exists:
 text_format=<output model>, max_output_tokens)`, then validates the returned text against the
 output model itself.
 - SDK retries are off (`max_retries=0`), so the engine is the only, bounded place where retries happen.
+- Each request is checked against an input-token budget (`LLM_MAX_INPUT_TOKENS`, default 64,000) before it is
+  sent. The tokenizer is byte-level, so a token covers at least one UTF-8 byte and our instructions and input
+  are never more tokens than bytes. The output schema counts twice and 1,000 tokens are allowed for framing:
+  these two allowances are estimates of how the provider renders a request, not measurements. A request over
+  the budget is refused unsent, as a non-retryable `rejected` error. Each sent call logs its bound next to the
+  input tokens the provider reports.
 - Provider exceptions are mapped to fixed messages (kind and HTTP status only). Their text, which can
   echo partly masked keys, is never stored, logged or chained.
 - Engine-level `handler_error` messages pass through `app.core.redaction.redact`.

@@ -38,4 +38,5 @@ def build_llm_client(settings: Settings, *, billing_confirmed: bool = False) -> 
         model=settings.llm_model.strip(),
         timeout_seconds=settings.llm_timeout_seconds,
         max_output_tokens=settings.llm_max_output_tokens,
+        max_input_tokens=settings.llm_max_input_tokens,
     )

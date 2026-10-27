@@ -1,17 +1,37 @@
 """OpenAI implementation of LLMClient using the Responses API with structured outputs."""
 
+import json
 import logging
 import time
 from dataclasses import dataclass
+from functools import cache
 from typing import Any
 
 import openai
+from openai.lib._pydantic import to_strict_json_schema
 from pydantic import ValidationError
 
 from app.llm.client import LLMError, LLMErrorKind, LLMRequest, OutputT, validate_output
 from app.tools.datastore import summarize_validation_error
 
 logger = logging.getLogger(__name__)
+
+# Input-token bound without a tokenizer. The tokenizer is byte-level, so a token covers at least one UTF-8 byte:
+# our instructions and input can never be more tokens than bytes. The output schema is rendered by the provider
+# in its own format, so it counts twice, and this allowance covers the provider's message framing. The two
+# allowances are estimates; each call logs its bound next to the reported input tokens so they can be checked.
+FRAMING_TOKENS = 1_000
+
+
+@cache
+def _schema_bytes(output_type: type) -> int:
+    return len(json.dumps(to_strict_json_schema(output_type), separators=(",", ":")).encode())
+
+
+def input_token_bound(request: LLMRequest, output_type: type) -> int:
+    """An upper bound on a request's input tokens: instructions, input, output schema and framing."""
+    return (len(request.instructions.encode()) + len(request.input_json.encode()) + 2 * _schema_bytes(output_type)
+            + FRAMING_TOKENS)
 
 
 @dataclass(frozen=True)
@@ -31,7 +51,8 @@ class OpenAIClient:
     SDK retries are disabled (``max_retries=0``) so that the orchestration engine is the
     single, bounded place where retries happen. Provider exceptions are mapped to
     ``LLMError`` with fixed messages; their own text is never stored or logged.
-    ``calls`` records outcome, latency and token usage per call.
+    ``calls`` records outcome, latency and token usage per call. A request whose input bound exceeds
+    ``max_input_tokens`` is refused before it is sent (non-retryable; nothing is recorded as a call).
     """
 
     def __init__(
@@ -41,14 +62,21 @@ class OpenAIClient:
         model: str,
         timeout_seconds: float,
         max_output_tokens: int,
+        max_input_tokens: int = 64_000,
         sdk_client: Any | None = None,
     ) -> None:
         self._model = model
         self._max_output_tokens = max_output_tokens
+        self._max_input_tokens = max_input_tokens
         self._client = sdk_client or openai.AsyncOpenAI(api_key=api_key, timeout=timeout_seconds, max_retries=0)
         self.calls: list[CallStats] = []
 
     async def generate(self, request: LLMRequest, output_type: type[OutputT]) -> OutputT:
+        bound = input_token_bound(request, output_type)
+        if bound > self._max_input_tokens:
+            logger.warning("llm agent=%s not sent: input bound %d > budget %d", request.agent, bound, self._max_input_tokens)
+            raise LLMError(LLMErrorKind.REJECTED, f"Request not sent: its input could reach {bound} tokens, over the "
+                                                  f"budget of {self._max_input_tokens} (LLM_MAX_INPUT_TOKENS).")
         started = time.perf_counter()
         response = None
         try:
@@ -83,8 +111,8 @@ class OpenAIClient:
             raise
         stats = self._record(request.agent, "ok", started, response)
         logger.info(
-            "llm agent=%s ok in %.0fms tokens in=%s out=%s",
-            request.agent, stats.latency_ms, stats.input_tokens, stats.output_tokens,
+            "llm agent=%s ok in %.0fms tokens in=%s (bound %d) out=%s",
+            request.agent, stats.latency_ms, stats.input_tokens, bound, stats.output_tokens,
         )
         return result
 
