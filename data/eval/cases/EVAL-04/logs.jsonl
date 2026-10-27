@@ -1,0 +1,5 @@
+{"timestamp": "2026-09-04T16:01:00Z", "service": "payments-api", "level": "WARNING", "message": "Slow response from fraud-check: 1900ms", "trace_id": "e4a"}
+{"timestamp": "2026-09-04T16:03:00Z", "service": "payments-api", "level": "ERROR", "message": "Request to fraud-check timed out after 2000ms", "trace_id": "e4b"}
+{"timestamp": "2026-09-04T16:09:00Z", "service": "payments-api", "level": "ERROR", "message": "Request to fraud-check timed out after 2000ms", "trace_id": "e4c"}
+{"timestamp": "2026-09-04T16:21:00Z", "service": "payments-api", "level": "ERROR", "message": "Request to fraud-check timed out after 2000ms", "trace_id": "e4d"}
+{"timestamp": "2026-09-04T16:22:00Z", "service": "api-gateway", "level": "ERROR", "message": "Upstream payments-api returned 504 for POST /checkout/pay", "trace_id": "e4d"}

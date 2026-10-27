@@ -1,0 +1,7 @@
+{"timestamp": "2026-09-01T09:56:00Z", "service": "payments-api", "level": "INFO", "message": "Config reloaded: db.pool.max_size=8"}
+{"timestamp": "2026-09-01T10:02:00Z", "service": "payments-api", "level": "ERROR", "message": "Timed out waiting for DB connection from pool after 3000ms", "trace_id": "e1a"}
+{"timestamp": "2026-09-01T10:05:00Z", "service": "payments-api", "level": "ERROR", "message": "Timed out waiting for DB connection from pool after 3000ms", "trace_id": "e1b"}
+{"timestamp": "2026-09-01T10:06:00Z", "service": "payments-api", "level": "WARNING", "message": "Connection pool saturated: 8/8 in use, 52 waiting"}
+{"timestamp": "2026-09-01T10:07:00Z", "service": "api-gateway", "level": "ERROR", "message": "Upstream payments-api returned 504 for POST /checkout/pay", "trace_id": "e1b"}
+{"timestamp": "2026-09-01T10:14:00Z", "service": "payments-api", "level": "ERROR", "message": "Timed out waiting for DB connection from pool after 3000ms", "trace_id": "e1c"}
+{"timestamp": "2026-09-01T10:27:00Z", "service": "payments-api", "level": "ERROR", "message": "Timed out waiting for DB connection from pool after 3000ms", "trace_id": "e1d"}

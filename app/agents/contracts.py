@@ -15,6 +15,7 @@ from typing import Any, Literal
 from pydantic import AwareDatetime, Field
 
 from app.agents.evidence import EvidenceSet
+from app.agents.grounding import CitationCheck
 from app.schemas.common import StrictModel
 from app.schemas.incident import IncidentReport
 
@@ -208,9 +209,56 @@ class ReasoningOutput(StrictModel):
     summary: str
 
 
+# --- Evidence independence and timeline checks (computed in code) ----------------------------------
+
+
+class ObservationGroup(StrictModel):
+    """Direct evidence records that describe one underlying observation (see app.agents.independence)."""
+
+    refs: list[str]
+    primary_source: str
+    sources: list[str]
+    merged_because: list[str]
+
+
+TemporalRelation = Literal["precedes_onset", "follows_onset", "ambiguous", "unknown", "persisted_after_rollback"]
+
+
+class ChangeTiming(StrictModel):
+    change_ref: str
+    change_id: str
+    change_type: str
+    change_status: str
+    service: str
+    time: str | None  # the change record's instant in UTC; None if missing or invalid
+    relation: TemporalRelation
+    detail: str
+    rollback_ref: str | None = None
+    persisted_refs: list[str] = Field(default_factory=list)
+
+
+class TemporalAssessment(StrictModel):
+    """Is the hypothesis's proposed change consistent with when symptoms began? (app.agents.temporal)"""
+
+    hypothesis_id: str
+    status: Literal["consistent", "change_follows_onset", "persisted_after_rollback", "ordering_ambiguous",
+                    "unknown", "not_applicable"]
+    onset: str | None  # earliest observed symptom, UTC
+    onset_refs: list[str]
+    onset_precision_seconds: float | None
+    changes: list[ChangeTiming]
+    blocks_cause: bool  # true: the cited change(s) cannot explain the onset
+    may_have_worsened: bool
+    worsening_refs: list[str]
+    detail: str
+
+
 class ReasoningResult(StrictModel):
     round: int
     output: ReasoningOutput
+    # Citations code removed from support or moved to contradicting (see app.agents.grounding).
+    citation_checks: list[CitationCheck] = Field(default_factory=list)
+    temporal_checks: list[TemporalAssessment] = Field(default_factory=list)
 
 
 # --- Critic -----------------------------------------------------------------------------------
@@ -291,6 +339,50 @@ class CorrectiveAction(StrictModel):
     hypothesis_id: str | None
 
 
+# --- Evidence inventory and final adjudication (computed in code) ---------------------------------
+
+
+InventoryStatus = Literal["retrieved", "partial", "no_matches", "failed", "timed_out", "not_run"]
+
+
+class InventoryEntry(StrictModel):
+    task_id: str
+    tool: str
+    status: InventoryStatus
+    requested_by: str | None
+    query: dict[str, Any]
+    record_count: int
+    signals: list[str]  # what was actually retrieved, e.g. "metrics: payments-api/request_rate_rps"
+    detail: str | None  # error or coverage-gap warning
+
+
+class EvidenceInventory(StrictModel):
+    """Authoritative record of what this investigation queried and obtained. Built from tool outcomes."""
+
+    entries: list[InventoryEntry]
+    retrieved_signals: list[str]
+    unavailable: list[str]  # statements about evidence that genuinely was not obtained
+    never_queried_tools: list[str]
+
+
+class AdjudicationCheck(StrictModel):
+    name: str
+    passed: bool
+    detail: str
+
+
+class Adjudication(StrictModel):
+    """The final decision on whether a cause may be named, with every condition it checked."""
+
+    decision: Literal["cause_accepted", "inconclusive"]
+    leading_hypothesis: str | None
+    basis: str
+    critic_verdict: str | None
+    checks: list[AdjudicationCheck]
+    blocking_issues: list[str]
+    unresolved_critic_issues: list[str]
+
+
 class ReportingInput(StrictModel):
     incident: IncidentReport
     scope: InvestigationScope | None
@@ -298,9 +390,11 @@ class ReportingInput(StrictModel):
     final_critique: CriticResult | None
     observability: ObservabilityResult | None
     dependency: DependencyResult | None
-    evidence_overview: list[dict[str, Any]]
+    evidence_inventory: EvidenceInventory
     known_limitations: list[str]
-    conclusion_allowed: bool  # computed: may the report name a probable cause?
+    adjudication: Adjudication
+    conclusion_allowed: bool  # = adjudication.decision == "cause_accepted"
+    timeline_checks: list[TemporalAssessment] = Field(default_factory=list)
 
 
 class ReportOutput(StrictModel):
@@ -308,8 +402,11 @@ class ReportOutput(StrictModel):
     headline: str
     summary: str
     ranked_hypotheses: list[RankedHypothesis]
-    facts: list[Statement]
-    assumptions: list[str]
+    facts: list[Statement]  # directly observed in cited evidence; no causal claims
+    interpretations: list[Statement]  # inferences and causal statements, with the evidence they rest on
+    assumptions: list[str]  # unverified premises the conclusion depends on
+    would_confirm: list[str]  # evidence that would confirm the leading hypothesis
+    would_disconfirm: list[str]  # evidence that would rule it out
     limitations: list[str]
     corrective_actions: list[CorrectiveAction]
     open_questions: list[str]
@@ -323,3 +420,6 @@ class FinalReport(StrictModel):
     adjustments: list[str]
     critic_rounds: int
     final_critic_verdict: str | None
+    adjudication: Adjudication | None = None
+    evidence_inventory: EvidenceInventory | None = None
+    temporal_assessments: list[TemporalAssessment] = Field(default_factory=list)

@@ -1,0 +1,11 @@
+{
+  "incident_id": "EVAL-10",
+  "summary": "Payments failing after this afternoon's payments-api deploy",
+  "affected_services": [
+    "payments-api"
+  ],
+  "severity": "critical",
+  "reported_at": "2026-09-10T15:08:00Z",
+  "reporter": "on-call SRE",
+  "context": "The deploy has been rolled back but errors continue."
+}

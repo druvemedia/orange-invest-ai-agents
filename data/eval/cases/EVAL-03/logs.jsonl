@@ -1,0 +1,9 @@
+{"timestamp": "2026-09-03T08:30:00Z", "service": "inventory-service", "level": "INFO", "message": "Health check OK"}
+{"timestamp": "2026-09-03T08:55:00Z", "service": "inventory-service", "level": "INFO", "message": "Health check OK"}
+{"timestamp": "2026-09-03T09:02:00Z", "service": "orders-service", "level": "WARNING", "message": "Inventory reservation conflict (409) for SKU-1142; retrying", "trace_id": "e3a"}
+{"timestamp": "2026-09-03T09:03:00Z", "service": "inventory-service", "level": "WARNING", "message": "Lock wait timeout exceeded on table stock_reservations", "trace_id": "e3a"}
+{"timestamp": "2026-09-03T09:04:00Z", "service": "orders-service", "level": "ERROR", "message": "Order rejected: item unavailable (SKU-1142) after 3 reservation attempts", "trace_id": "e3a"}
+{"timestamp": "2026-09-03T09:10:00Z", "service": "inventory-service", "level": "INFO", "message": "Health check OK"}
+{"timestamp": "2026-09-03T09:11:00Z", "service": "postgres-inventory", "level": "WARNING", "message": "Deadlock detected; transaction aborted"}
+{"timestamp": "2026-09-03T09:18:00Z", "service": "orders-service", "level": "ERROR", "message": "Order rejected: item unavailable (SKU-2210) after 3 reservation attempts", "trace_id": "e3b"}
+{"timestamp": "2026-09-03T09:25:00Z", "service": "inventory-service", "level": "INFO", "message": "Health check OK"}

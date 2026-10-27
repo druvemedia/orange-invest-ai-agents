@@ -1,0 +1,6 @@
+{"timestamp": "2026-09-06T10:48:00Z", "service": "orders-service", "level": "WARNING", "message": "Retrying inventory reservation (attempt 3/5)"}
+{"timestamp": "2026-09-06T10:54:00Z", "service": "orders-service", "level": "WARNING", "message": "Retrying inventory reservation (attempt 5/5)"}
+{"timestamp": "2026-09-06T11:02:00Z", "service": "orders-service", "level": "WARNING", "message": "Retrying inventory reservation (attempt 5/5)"}
+{"timestamp": "2026-09-06T11:03:00Z", "service": "orders-service", "level": "ERROR", "message": "Inventory call timed out after 1000ms; giving up"}
+{"timestamp": "2026-09-06T11:05:00Z", "service": "inventory-service", "level": "WARNING", "message": "Thread pool exhausted; rejecting request"}
+{"timestamp": "2026-09-06T11:14:00Z", "service": "orders-service", "level": "WARNING", "message": "Retrying inventory reservation (attempt 4/5)"}

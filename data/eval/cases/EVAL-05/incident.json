@@ -1,0 +1,9 @@
+{
+  "incident_id": "EVAL-05",
+  "summary": "Customers are not receiving order confirmation emails",
+  "affected_services": [],
+  "severity": null,
+  "reported_at": "2026-09-05T08:30:00Z",
+  "reporter": "customer support",
+  "context": "Orders themselves complete normally."
+}

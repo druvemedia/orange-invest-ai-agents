@@ -1,0 +1,6 @@
+{
+  "faults": {
+    "query_metrics": "unavailable"
+  },
+  "note": "The metrics tool is simulated as unavailable for this case, for both approaches."
+}

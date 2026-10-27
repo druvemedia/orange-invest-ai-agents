@@ -1,0 +1,11 @@
+{
+  "incident_id": "EVAL-01",
+  "summary": "Card payments are slow and failing at checkout",
+  "affected_services": [
+    "payments-api"
+  ],
+  "severity": "high",
+  "reported_at": "2026-09-01T10:12:00Z",
+  "reporter": "on-call SRE",
+  "context": "Support reports checkout errors since about 10:00 UTC."
+}

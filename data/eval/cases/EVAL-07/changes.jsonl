@@ -1,0 +1,1 @@
+{"change_id": "CHG-E07-1", "timestamp": "2026-09-07T18:40:00Z", "service": "redis-cache", "change_type": "config_change", "status": "succeeded", "summary": "Lower cache memory limit", "details": {"key": "maxmemory", "old": "8gb", "new": "2gb"}, "changed_by": "platform-team"}

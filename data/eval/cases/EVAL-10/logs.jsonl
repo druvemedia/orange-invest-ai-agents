@@ -1,0 +1,9 @@
+{"timestamp": "2026-09-10T14:57:00Z", "service": "billing-batch", "level": "INFO", "message": "Reconciliation started with 200 parallel workers"}
+{"timestamp": "2026-09-10T14:58:00Z", "service": "postgres-payments", "level": "ERROR", "message": "FATAL: sorry, too many clients already"}
+{"timestamp": "2026-09-10T14:59:00Z", "service": "payments-api", "level": "ERROR", "message": "Could not acquire DB connection: too many clients", "trace_id": "e10a"}
+{"timestamp": "2026-09-10T15:06:00Z", "service": "postgres-payments", "level": "ERROR", "message": "FATAL: sorry, too many clients already"}
+{"timestamp": "2026-09-10T15:11:00Z", "service": "payments-api", "level": "INFO", "message": "Starting payments-api v2.19.4"}
+{"timestamp": "2026-09-10T15:12:00Z", "service": "payments-api", "level": "ERROR", "message": "Could not acquire DB connection: too many clients", "trace_id": "e10b"}
+{"timestamp": "2026-09-10T15:18:00Z", "service": "postgres-payments", "level": "ERROR", "message": "FATAL: sorry, too many clients already"}
+{"timestamp": "2026-09-10T15:30:00Z", "service": "payments-api", "level": "ERROR", "message": "Could not acquire DB connection: too many clients", "trace_id": "e10c"}
+{"timestamp": "2026-09-10T15:35:00Z", "service": "postgres-payments", "level": "ERROR", "message": "FATAL: sorry, too many clients already"}

@@ -14,8 +14,12 @@ from app.agents.contracts import (
     ReasoningInput,
     ReasoningOutput,
     ReasoningResult,
+    TemporalAssessment,
 )
 from app.agents.evidence import EvidenceSet, RefIndex, duplicate_ids, evidence_sets
+from app.agents.grounding import CitationCheck, check_citations
+from app.agents.independence import assess_independence
+from app.agents.temporal import assess
 from app.orchestration import TaskContext, TaskRecord
 
 MAX_HYPOTHESES = 5
@@ -97,14 +101,38 @@ the new evidence listed in new_evidence_refs.
         return problems
 
     def finish(self, ctx, output, prepared):
-        hypotheses, adjustments = [], []
+        hypotheses, adjustments, checks, timelines = [], [], [], []
         for h in output.hypotheses:
+            h, h_checks = apply_citation_checks(h, prepared.refs)
+            checks += h_checks
+            adjustments += [f"{c.hypothesis_id}: {c.ref} {c.action.replace('_', ' ')} ({c.detail})" for c in h_checks]
             capped, reason = cap_confidence(h, prepared.refs, output.insufficient_evidence)
-            hypotheses.append(capped)
-            if reason:
+            capped, timeline = apply_timeline(capped, prepared.refs, prepared.input.incident.affected_services)
+            timelines.append(timeline)
+            if capped.confidence != h.confidence:
+                reason = reason if timeline.blocks_cause is False else f"timeline: {timeline.detail}"
                 adjustments.append(f"{h.hypothesis_id}: confidence {h.confidence} -> {capped.confidence} ({reason})")
+            hypotheses.append(capped)
         adjusted = output.model_copy(update={"hypotheses": hypotheses})
-        return ReasoningResult(round=prepared.input.round, output=adjusted), adjustments, []
+        return ReasoningResult(round=prepared.input.round, output=adjusted, citation_checks=checks,
+                               temporal_checks=timelines), adjustments, []
+
+
+def apply_timeline(h: Hypothesis, refs: RefIndex, affected_services: list[str]) -> tuple[Hypothesis, TemporalAssessment]:
+    """A hypothesis whose cited change(s) cannot explain the onset is capped to low (app.agents.temporal)."""
+    timeline = assess(h, refs, affected_services)
+    if timeline.blocks_cause and h.confidence != "low":
+        h = h.model_copy(update={"confidence": "low"})
+    return h, timeline
+
+
+def apply_citation_checks(h: Hypothesis, refs: RefIndex) -> tuple[Hypothesis, list[CitationCheck]]:
+    supporting, contradicting, checks = check_citations(
+        h.hypothesis_id, f"{h.title} {h.description}", h.supporting_refs, h.contradicting_refs, refs
+    )
+    if not checks:
+        return h, []
+    return h.model_copy(update={"supporting_refs": supporting, "contradicting_refs": contradicting}), checks
 
 
 def analysis_context(
@@ -134,12 +162,16 @@ def cap_confidence(h: Hypothesis, refs: RefIndex, insufficient: bool) -> tuple[H
     if insufficient and level != "low":
         level, reason = "low", "evidence marked insufficient"
     elif not direct and level != "low":
-        level, reason = "low", "no direct evidence (tool records or observed facts) supports it"
+        level, reason = "low", (
+            "no direct, incident-specific evidence supports it; dependency edges, past incidents, interpretations "
+            "and unchanged metrics are context, not evidence of failure"
+        )
     elif level == "high":
+        independence = assess_independence(h.supporting_refs, refs)
         if h.contradicting_refs:
             level, reason = "medium", "contradicting evidence exists"
-        elif len(refs.sources(direct)) < 2:
-            level, reason = "medium", "direct support comes from fewer than two independent sources"
+        elif independence.status != "independent":
+            level, reason = "medium", f"direct support is not independently corroborated ({independence.detail})"
     if reason is None:
         return h, None
     return h.model_copy(update={"confidence": level}), reason

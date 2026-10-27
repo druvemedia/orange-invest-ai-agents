@@ -177,8 +177,9 @@ def test_reporting_contract(happy):
 
     assert inp.final_reasoning.round == 2
     assert inp.final_critique.final_verdict == "accept"
-    assert inp.conclusion_allowed is True
-    assert {e["task_id"] for e in inp.evidence_overview} >= {"ev.logs", "ev.metrics", "ev.c1.1"}
+    assert inp.conclusion_allowed is True and inp.adjudication.decision == "cause_accepted"
+    assert {e.task_id for e in inp.evidence_inventory.entries} >= {"ev.logs", "ev.metrics", "ev.c1.1"}
+    assert "metrics: payments-api/request_rate_rps" in inp.evidence_inventory.retrieved_signals
 
 
 # --- Grounding and confidence --------------------------------------------------------------------------
@@ -286,7 +287,13 @@ def test_critic_loop_stops_at_max_rounds():
     last = read_result(tasks["critic.r3"], CriticResult)
     assert last.loop_decision == "max_rounds_reached"
     assert last.rejected_requests[0].reason == "no critic rounds remaining"
-    assert result.report.report.conclusion == "inconclusive"
+    # Phase 6: the critic still saying "revise" at its limit no longer forces inconclusive by itself.
+    # Its issues cite no direct evidence, the leader has direct support from 3 sources and every
+    # requested follow-up ran, so the adjudication accepts on evidence and lists the unresolved issues.
+    adjudication = result.report.adjudication
+    assert adjudication.critic_verdict == "revise" and adjudication.decision == "cause_accepted"
+    assert adjudication.basis == "critic verdict 'revise' adjudicated on evidence sufficiency"
+    assert adjudication.unresolved_critic_issues and result.report.report.conclusion == "probable_cause_identified"
     assert any("round limit" in lim for lim in result.report.report.limitations)
 
 
@@ -349,7 +356,7 @@ def test_no_evidence_gives_inconclusive_report_without_guessing():
     report = result.report.report
     assert report.conclusion == "inconclusive"  # scripted report asked for a probable cause
     assert report.ranked_hypotheses == []
-    assert any("ev.logs" in lim and "did not succeed" in lim for lim in report.limitations)
+    assert any(lim.startswith("ev.logs (search_logs) failed: no evidence was obtained") for lim in report.limitations)
     assert all(e.outcome == "failed" for e in result.investigation.evidence)
 
 
@@ -599,3 +606,164 @@ def test_secrets_in_unexpected_provider_exceptions_are_redacted():
     assert result.investigation.tasks["orchestrate"].error.code is TaskErrorCode.HANDLER_ERROR
     assert key not in dumped
     assert "[REDACTED]" in result.investigation.tasks["orchestrate"].error.message
+
+
+# --- Reference normalisation (Phase 3.2) -----------------------------------------------------------
+
+
+def index_with_findings(*finding_refs):
+    from app.agents.evidence import EvidenceItem, EvidenceSet, RefIndex
+    from app.orchestration import EvidenceOutcome
+    from app.schemas.evidence import EvidenceSource
+
+    index = RefIndex().add_sets([
+        EvidenceSet(ref="ev.logs", tool="search_logs", source=EvidenceSource.LOGS, outcome=EvidenceOutcome.COLLECTED,
+                    query={}, warnings=[], error=None, items=[EvidenceItem(ref="ev.logs#0", record={})]),
+    ])
+    for ref in finding_refs:
+        index.add_finding(ref, "fact", ["ev.logs#0"])
+    return index
+
+
+@pytest.mark.parametrize(
+    ("ref", "expected", "candidates"),
+    [
+        ("dependency/dep-3", "dependency/dep-3", ["dependency/dep-3"]),  # canonical
+        ("ev.logs#0", "ev.logs#0", ["ev.logs#0"]),  # canonical record
+        ("dep-3", "dependency/dep-3", ["dependency/dep-3"]),  # unambiguous alias
+        ("dep-9", None, []),  # unknown finding
+        ("obs-1", None, []),  # finding never shown to this agent
+        ("#0", None, []),  # record refs are never guessed
+        ("0", None, []),
+        ("logs#0", None, []),
+        ("other/dep-3", None, []),  # wrong prefix is not rewritten
+        ("x-1", None, ["dependency/x-1", "observability/x-1"]),  # ambiguous
+    ],
+)
+def test_ref_index_resolves_only_unambiguous_shown_references(ref, expected, candidates):
+    index = index_with_findings("dependency/dep-3", "dependency/x-1", "observability/x-1")
+
+    assert index.resolve(ref) == (expected, candidates)
+
+
+def test_ambiguous_alias_is_rejected_with_explanation():
+    from app.agents.base import unknown_ref_problems
+
+    index = index_with_findings("dependency/x-1", "observability/x-1")
+
+    [problem] = unknown_ref_problems("H1", ["x-1"], index)
+    assert "ambiguous reference 'x-1'" in problem and "dependency/x-1, observability/x-1" in problem
+    assert unknown_ref_problems("H1", ["dep-9"], index) == ["H1 cites unknown reference 'dep-9'"]
+
+
+def bare_finding_ids(request):
+    out = s.reasoning(request)
+    for h in out["hypotheses"]:
+        h["supporting_refs"] = [r.split("/", 1)[1] if "/" in r else r for r in h["supporting_refs"]]
+    return out
+
+
+def test_unambiguous_short_references_are_normalised_without_a_retry():
+    result, llm = investigate(s.full_script(reasoning=[bare_finding_ids], critic=[ACCEPT]))
+    task = result.investigation.tasks["reasoning.r1"]
+    env = read_envelope(task)
+
+    assert task.status is TaskStatus.SUCCEEDED and len(task.attempts) == 1
+    assert len(llm.calls_for("reasoning")) == 1
+    h1 = next(h for h in env.result["output"]["hypotheses"] if h["hypothesis_id"] == "H1")
+    assert h1["supporting_refs"] == ["dependency/dep-1", "observability/obs-1", "observability/obs-4"]
+    notes = [a for a in env.adjustments if "normalised" in a]
+    assert "hypotheses[0].supporting_refs: reference 'dep-1' normalised to 'dependency/dep-1'" in notes
+    assert len(notes) == 5  # dep-1, obs-1, obs-4 (H1) + obs-2, dep-2 (H2)
+    for ref in h1["supporting_refs"]:
+        resolve(ref, result.investigation.tasks)  # provenance still traces to tool records
+
+
+def test_unknown_short_reference_is_still_rejected():
+    def invents(request):
+        out = s.reasoning(request)
+        out["hypotheses"][0]["supporting_refs"] = ["dep-99", "obs-1"]
+        return out
+
+    result, _ = investigate(s.full_script(reasoning=[invents, s.reasoning], critic=[ACCEPT]))
+    task = result.investigation.tasks["reasoning.r1"]
+
+    assert len(task.attempts) == 2
+    assert task.attempts[0].error.code is TaskErrorCode.MODEL_INVALID_OUTPUT
+    assert "unknown reference 'dep-99'" in task.attempts[0].error.message
+    assert "obs-1" not in task.attempts[0].error.message  # the resolvable one was normalised, not reported
+
+
+def test_short_reference_to_a_finding_not_shown_is_rejected():
+    # Observability is only shown tool records, so a bare finding id cannot be resolved there.
+    def cites_finding(request):
+        out = s.observability(request)
+        out["observations"][0]["evidence_refs"] = ["obs-2"]
+        return out
+
+    result, _ = investigate(s.full_script(observability=[cites_finding, s.observability], critic=[ACCEPT]))
+    task = result.investigation.tasks["observability"]
+
+    assert len(task.attempts) == 2
+    assert "unknown reference 'obs-2'" in task.attempts[0].error.message
+
+
+def test_prompt_requires_canonical_finding_references():
+    from app.agents.base import SHARED_RULES
+
+    assert '"dependency/dep-3", never a bare' in SHARED_RULES.replace("\n  ", " ")
+
+
+# --- Timeout configuration (Phase 3.2) --------------------------------------------------------------
+
+
+def test_default_timeouts_are_consistent(clean_env):
+    from app.agents.orchestrator import AGENT_TIMEOUT_MARGIN_SECONDS
+    from app.core.config import Settings
+
+    settings = Settings(_env_file=None)
+    config = AgentConfig.from_settings(settings)
+
+    assert settings.llm_timeout_seconds == 120
+    assert config.agent_timeout_seconds == 120 + AGENT_TIMEOUT_MARGIN_SECONDS == AgentConfig().agent_timeout_seconds
+    assert config.agent_timeout_seconds > settings.llm_timeout_seconds  # the SDK times out first
+    assert config.limits.deadline_seconds == 300 >= config.agent_timeout_seconds
+    assert config.agent_retry.max_attempts == 2  # retries stay bounded
+
+
+def test_environment_override_reaches_sdk_engine_and_plan(clean_env, monkeypatch):
+    from app.agents.contracts import ScopeOutput
+    from app.agents.orchestrator import resolve_scope
+    from app.core.config import Settings
+    from app.llm import build_llm_client
+
+    monkeypatch.setenv("LLM_TIMEOUT_SECONDS", "200")
+    settings = Settings(_env_file=None, llm_provider="openai", llm_model="m", llm_api_key="sk-test-not-a-real-key")
+    config = AgentConfig.from_settings(settings)
+    scope, _ = resolve_scope(ScopeOutput(**s.scope()), INC_2041, config)
+    plan = OrchestratorAgent(llm=None, tools=build_evidence_tools(), config=config).plan_tasks(scope)
+
+    assert settings.llm_timeout_seconds == 200
+    assert build_llm_client(settings)._client.timeout == 200  # SDK per-request timeout; no request is made
+    assert config.agent_timeout_seconds == 230
+    assert {t.timeout_seconds for t in plan if t.kind.startswith("agent.")} == {230}
+
+
+@pytest.mark.parametrize("value", ["0", "-5", "601", "abc"])
+def test_invalid_timeout_values_are_rejected(clean_env, monkeypatch, value):
+    from pydantic import ValidationError
+
+    from app.core.config import Settings
+
+    monkeypatch.setenv("LLM_TIMEOUT_SECONDS", value)
+    with pytest.raises(ValidationError, match="llm_timeout_seconds"):
+        Settings(_env_file=None)
+
+
+def test_deadline_shorter_than_one_attempt_is_rejected(clean_env):
+    from app.core.config import Settings
+
+    settings = Settings(_env_file=None, llm_timeout_seconds=120, investigation_deadline_seconds=100)
+
+    with pytest.raises(ValueError, match="INVESTIGATION_DEADLINE_SECONDS .* must be at least"):
+        AgentConfig.from_settings(settings)

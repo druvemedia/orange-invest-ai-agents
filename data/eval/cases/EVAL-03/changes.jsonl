@@ -1,0 +1,1 @@
+{"change_id": "CHG-E03-1", "timestamp": "2026-09-03T08:50:00Z", "service": "inventory-service", "change_type": "feature_flag", "status": "succeeded", "summary": "Roll out batch reservations to all traffic", "details": {"flag": "inventory.batch_reservations", "old": "10%", "new": "100%"}, "changed_by": "inventory-team"}

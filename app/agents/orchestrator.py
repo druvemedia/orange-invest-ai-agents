@@ -56,10 +56,16 @@ MAX_FOCUS_SERVICES = 4
 MAX_KEYWORDS = 6
 
 
+# Each agent attempt makes one model request. The engine's per-attempt timeout is the provider
+# timeout plus this margin, so a slow request is normally ended by the SDK timeout and recorded as
+# a retryable model timeout. The engine timeout is only a backstop.
+AGENT_TIMEOUT_MARGIN_SECONDS = 30.0
+
+
 class AgentConfig(StrictModel):
     max_critic_rounds: int = Field(default=2, ge=1, le=5)
     max_evidence_requests: int = Field(default=3, ge=0, le=5)
-    agent_timeout_seconds: float = Field(default=90.0, gt=0, le=900)
+    agent_timeout_seconds: float = Field(default=120.0 + AGENT_TIMEOUT_MARGIN_SECONDS, gt=0, le=900)
     agent_retry: RetryPolicy = RetryPolicy(max_attempts=2)
     evidence_timeout_seconds: float = Field(default=30.0, gt=0, le=600)
     evidence_retry: RetryPolicy = RetryPolicy(max_attempts=2)
@@ -69,10 +75,18 @@ class AgentConfig(StrictModel):
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "AgentConfig":
+        """Build limits from settings. Raises ValueError if the deadline cannot fit one agent attempt."""
+        agent_timeout = settings.llm_timeout_seconds + AGENT_TIMEOUT_MARGIN_SECONDS
+        if settings.investigation_deadline_seconds < agent_timeout:
+            raise ValueError(
+                f"INVESTIGATION_DEADLINE_SECONDS ({settings.investigation_deadline_seconds:g}) must be at least "
+                f"LLM_TIMEOUT_SECONDS + {AGENT_TIMEOUT_MARGIN_SECONDS:g} ({agent_timeout:g}), "
+                "or a single model request could never finish before the deadline."
+            )
         return cls(
             max_critic_rounds=settings.agent_max_critic_rounds,
             max_evidence_requests=settings.agent_max_evidence_requests,
-            agent_timeout_seconds=settings.llm_timeout_seconds + 30,
+            agent_timeout_seconds=agent_timeout,
             limits=EngineLimits(
                 max_tasks=40,
                 max_total_attempts=80,

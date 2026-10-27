@@ -1,0 +1,11 @@
+{
+  "incident_id": "EVAL-03",
+  "summary": "Orders intermittently rejected as 'item unavailable'; inventory dashboards look healthy",
+  "affected_services": [
+    "orders-service"
+  ],
+  "severity": "medium",
+  "reported_at": "2026-09-03T09:15:00Z",
+  "reporter": "orders team",
+  "context": "Inventory error-rate panel is flat."
+}

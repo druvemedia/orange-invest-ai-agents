@@ -1,0 +1,11 @@
+{
+  "incident_id": "EVAL-06",
+  "summary": "Order API requests timing out",
+  "affected_services": [
+    "orders-service"
+  ],
+  "severity": "high",
+  "reported_at": "2026-09-06T11:10:00Z",
+  "reporter": "on-call SRE",
+  "context": null
+}

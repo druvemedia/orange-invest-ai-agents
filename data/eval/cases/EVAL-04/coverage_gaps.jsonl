@@ -1,0 +1,1 @@
+{"source": "metrics", "service": "fraud-check", "start": "2026-09-04T14:00:00Z", "end": "2026-09-04T18:00:00Z", "reason": "Vendor metrics export delayed; no fraud-check latency data for this window."}

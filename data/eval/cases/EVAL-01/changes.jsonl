@@ -1,0 +1,2 @@
+{"change_id": "CHG-E01-1", "timestamp": "2026-09-01T06:50:00Z", "service": "orders-service", "change_type": "deployment", "status": "succeeded", "summary": "Routine dependency updates", "version": "6.2.1"}
+{"change_id": "CHG-E01-2", "timestamp": "2026-09-01T09:55:00Z", "service": "payments-api", "change_type": "config_change", "status": "succeeded", "summary": "Reduce database connection pool size", "details": {"key": "db.pool.max_size", "old": "40", "new": "8"}, "changed_by": "platform-team"}

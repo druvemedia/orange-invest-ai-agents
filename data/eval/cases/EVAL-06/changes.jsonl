@@ -1,0 +1,1 @@
+{"change_id": "CHG-E06-1", "timestamp": "2026-09-06T10:45:00Z", "service": "orders-service", "change_type": "deployment", "status": "succeeded", "summary": "Retry inventory calls up to 5 times without backoff", "version": "6.1.0", "previous_version": "6.0.3", "changed_by": "deploy-bot (PR #4630)"}

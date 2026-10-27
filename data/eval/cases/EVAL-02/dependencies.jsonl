@@ -1,0 +1,13 @@
+{"service": "web-frontend", "depends_on": "api-gateway", "dependency_type": "http", "critical": true}
+{"service": "web-frontend", "depends_on": "redis-cache", "dependency_type": "cache", "critical": true, "notes": "Session store; cache misses fall back to api-gateway session lookup."}
+{"service": "api-gateway", "depends_on": "payments-api", "dependency_type": "http", "critical": true}
+{"service": "api-gateway", "depends_on": "orders-service", "dependency_type": "http", "critical": true}
+{"service": "payments-api", "depends_on": "postgres-payments", "dependency_type": "database", "critical": true}
+{"service": "payments-api", "depends_on": "fraud-check", "dependency_type": "external_api", "critical": true, "notes": "Third-party vendor; 2000ms client timeout."}
+{"service": "payments-api", "depends_on": "redis-cache", "dependency_type": "cache", "critical": false}
+{"service": "orders-service", "depends_on": "inventory-service", "dependency_type": "http", "critical": true}
+{"service": "orders-service", "depends_on": "postgres-orders", "dependency_type": "database", "critical": true}
+{"service": "orders-service", "depends_on": "notification-service", "dependency_type": "queue", "critical": false}
+{"service": "inventory-service", "depends_on": "postgres-inventory", "dependency_type": "database", "critical": true}
+{"service": "inventory-service", "depends_on": "redis-cache", "dependency_type": "cache", "critical": false}
+{"service": "notification-service", "depends_on": "email-provider", "dependency_type": "external_api", "critical": false}

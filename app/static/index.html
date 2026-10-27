@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Incident Investigator</title>
+<style>
+  :root { --bg: #f7f7f8; --card: #fff; --text: #1b1b1f; --muted: #5f6368; --line: #dcdce0; --accent: #c2410c;
+          --ok: #15803d; --warn: #b45309; --bad: #b91c1c; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111214; --card: #1b1c1f; --text: #ececf0; --muted: #a0a3aa; --line: #33353a; --accent: #fb923c;
+            --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 system-ui, -apple-system, Segoe UI, sans-serif; background: var(--bg); color: var(--text); }
+  /* overflow-wrap: anywhere so user-supplied text without spaces cannot widen the page. */
+  main { max-width: 960px; margin: 0 auto; padding: 24px 16px 64px; overflow-wrap: anywhere; }
+  h1 { font-size: 22px; margin: 0 0 4px; } h2 { font-size: 17px; margin: 24px 0 8px; } h3 { font-size: 15px; margin: 16px 0 4px; }
+  .muted { color: var(--muted); } .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin-top: 16px; }
+  label { display: block; font-weight: 600; margin: 10px 0 4px; }
+  input, textarea, select { width: 100%; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; }
+  textarea { min-height: 70px; } .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 640px) { .row { grid-template-columns: 1fr; } }
+  button { margin-top: 14px; padding: 9px 16px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
+  button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  .banner { padding: 10px 12px; border-radius: 6px; border: 1px solid var(--warn); color: var(--warn); margin-top: 12px; }
+  .error { border-color: var(--bad); color: var(--bad); }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); font-size: 13px; }
+  .cls-direct { color: var(--ok); border-color: var(--ok); } .cls-no_change, .cls-missing, .cls-unknown { color: var(--bad); border-color: var(--bad); } .cls-contextual { color: var(--muted); }
+  .conf-high { color: var(--ok); border-color: var(--ok); } .conf-medium { color: var(--warn); border-color: var(--warn); } .conf-low { color: var(--muted); }
+  ul { padding-left: 20px; margin: 4px 0; } li { margin: 2px 0; }
+  code { font-size: 12.5px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; overflow-wrap: anywhere; }
+  .ev { color: var(--muted); font-size: 13.5px; overflow-wrap: anywhere; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; } td, th { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); overflow-wrap: normal; white-space: nowrap; }
+  .scroll { overflow-x: auto; } /* narrow screens scroll the table instead of breaking words */
+</style>
+</head>
+<body>
+<main>
+  <h1>Incident Investigator</h1>
+  <div class="muted">Submit an incident; six agents investigate synthetic evidence and return an evidence-backed report.</div>
+  <div id="capability"></div>
+
+  <form id="form" class="card" autocomplete="off">
+    <div class="row">
+      <div><label for="source">Evidence source</label><select id="source"></select></div>
+      <div><label for="example">Example incident</label><select id="example"></select></div>
+    </div>
+    <label for="summary">Summary *</label><textarea id="summary" maxlength="2000" required></textarea>
+    <div class="row">
+      <div><label for="reported_at">Reported at (UTC, ISO 8601) *</label><input id="reported_at" required placeholder="2026-10-20T14:12:00Z"></div>
+      <div><label for="severity">Severity</label>
+        <select id="severity"><option value="">not assessed</option><option>critical</option><option>high</option><option>medium</option><option>low</option></select></div>
+    </div>
+    <div class="row">
+      <div><label for="services">Affected services (comma-separated)</label><input id="services" placeholder="payments-api"></div>
+      <div><label for="reporter">Reporter</label><input id="reporter" maxlength="200"></div>
+    </div>
+    <label for="context">Context</label><textarea id="context" maxlength="5000"></textarea>
+    <button id="submit" type="submit">Investigate</button>
+    <div id="formError"></div>
+  </form>
+
+  <div id="status" class="card" hidden></div>
+  <div id="report" class="card" hidden></div>
+</main>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
+let sources = [];
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  const body = res.headers.get("content-type")?.includes("json") ? await res.json() : await res.text();
+  if (!res.ok) {
+    const d = body && body.detail;
+    throw new Error(Array.isArray(d) ? d.map((x) => `${(x.loc || []).slice(1).join(".")}: ${x.msg}`).join("; ") : (d || `HTTP ${res.status}`));
+  }
+  return body;
+}
+
+function fillExample() {
+  const src = sources.find((s) => s.name === $("source").value);
+  const ex = src && src.example_incidents[Number($("example").value)];
+  if (!ex) return;
+  $("summary").value = ex.summary || ""; $("reported_at").value = ex.reported_at || "";
+  $("severity").value = ex.severity || ""; $("services").value = (ex.affected_services || []).join(", ");
+  $("reporter").value = ex.reporter || ""; $("context").value = ex.context || "";
+}
+
+function fillExamples() {
+  const src = sources.find((s) => s.name === $("source").value);
+  $("example").replaceChildren(...(src ? src.example_incidents : []).map((e, i) => { const o = el("option", `${e.incident_id}: ${e.summary.slice(0, 60)}`); o.value = i; return o; }));
+  fillExample();
+}
+
+async function init() {
+  const cap = await api("/capabilities");
+  if (!cap.investigations_available) $("capability").replaceChildren(el("div", `Investigations unavailable: ${cap.unavailable_reason}`, "banner error"));
+  else if (cap.model === "offline-heuristic") $("capability").replaceChildren(el("div", "Running with the offline heuristic stand-in, not an AI model. Reports are for demonstration only.", "banner"));
+  else $("capability").replaceChildren(el("div", `Model: ${cap.model}`, "muted"));
+  $("submit").disabled = !cap.investigations_available;
+  sources = await api("/evidence-sources");
+  $("source").replaceChildren(...sources.map((s) => { const o = el("option", `${s.name}: ${s.description.slice(0, 70)}`); o.value = s.name; return o; }));
+  $("source").onchange = fillExamples; $("example").onchange = fillExample;
+  fillExamples();
+}
+
+$("form").onsubmit = async (event) => {
+  event.preventDefault();
+  $("formError").replaceChildren(); $("report").hidden = true;
+  const services = $("services").value.split(",").map((s) => s.trim()).filter(Boolean);
+  const body = { summary: $("summary").value, reported_at: $("reported_at").value.trim(), affected_services: services,
+                 evidence_source: $("source").value };
+  for (const k of ["severity", "reporter", "context"]) if ($(k).value.trim()) body[k] = $(k).value.trim();
+  try {
+    $("submit").disabled = true;
+    const job = await api("/investigations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    await poll(job.investigation_id);
+  } catch (err) {
+    $("formError").replaceChildren(el("div", err.message, "banner error"));
+  } finally { $("submit").disabled = false; }
+};
+
+async function poll(id) {
+  const box = $("status"); box.hidden = false;
+  for (;;) {
+    const job = await api(`/investigations/${encodeURIComponent(id)}`);
+    box.replaceChildren(el("strong", `${job.investigation_id}: ${job.status}`), el("div", `Incident ${job.incident_id} · source ${job.evidence_source} · model ${job.model}`, "muted"));
+    if (job.status === "failed") { box.append(el("div", job.error, "banner error")); return; }
+    if (job.status === "completed") { renderReport(await api(job.links.report), job.links.report_markdown); return; }
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+}
+
+function citations(list, label) {
+  const wrap = el("div"); wrap.append(el("div", `${label}:`, "muted"));
+  if (!list.length) { wrap.append(el("div", "none cited", "ev")); return wrap; }
+  const ul = el("ul");
+  for (const c of list) {
+    const li = el("li"); li.append(el("code", c.ref), document.createTextNode(" "), el("span", c.evidence_class, `pill cls-${c.evidence_class}`), document.createTextNode(" "), el("span", c.text, "ev"));
+    li.title = c.class_reason;
+    if (c.based_on.length) { const inner = el("ul"); for (const b of c.based_on) { const i = el("li"); i.append(el("code", b.ref), document.createTextNode(" "), el("span", b.evidence_class, `pill cls-${b.evidence_class}`), document.createTextNode(" "), el("span", `${b.text} (${b.class_reason})`, "ev")); inner.append(i); } li.append(inner); }
+    ul.append(li);
+  }
+  wrap.append(ul); return wrap;
+}
+
+function list(items) { const ul = el("ul"); (items.length ? items : ["none"]).forEach((t) => ul.append(el("li", t))); return ul; }
+
+function renderReport(v, mdLink) {
+  const r = $("report"); r.hidden = false; r.replaceChildren();
+  for (const n of v.notices) r.append(el("div", n, "banner"));
+  r.append(el("h2", v.headline), el("div", `Conclusion: ${v.conclusion.replaceAll("_", " ")} · status ${v.process.investigation_status} (${v.process.termination_reason}) · report written by ${v.process.report_author}`, "muted"), el("p", v.summary));
+  const md = el("a", "Download Markdown report"); md.href = mdLink; r.append(md);
+  if (v.unresolved_citations.length) r.append(el("div", `Unresolved citations: ${v.unresolved_citations.join(", ")}`, "banner error"));
+
+  r.append(el("h2", "Incident and observed impact"), list([`Summary: ${v.incident.summary}`, `Severity: ${v.incident.severity || "not assessed"}`,
+    `Affected services: ${v.incident.affected_services.join(", ") || "not specified"}`, ...v.observed_impact.map((s) => `Observed: ${s.text}`)]));
+
+  r.append(el("h2", "Ranked hypotheses"));
+  if (!v.hypotheses.length) r.append(el("div", "No hypothesis could be grounded in the evidence.", "muted"));
+  for (const h of v.hypotheses) {
+    const head = el("h3"); head.append(document.createTextNode(`${h.rank}. ${h.title} `), el("span", `${h.confidence} confidence`, `pill conf-${h.confidence}`));
+    r.append(head, el("p", h.assessment), citations(h.supporting, "Supporting evidence"), citations(h.contradicting, "Contradicting evidence"));
+  }
+  const stmts = (xs) => list(xs.map((f) => `${f.text} [${f.evidence.map((c) => c.ref).join(", ")}]`));
+  r.append(el("h2", "Facts (directly observed)"), stmts(v.facts));
+  r.append(el("h2", "Interpretations (inferred)"), stmts(v.interpretations));
+  r.append(el("h2", "Assumptions (unverified premises)"), list(v.assumptions));
+  r.append(el("h2", "What would confirm or rule out the leading hypothesis"),
+    list([...v.would_confirm.map((x) => `Confirm: ${x}`), ...v.would_disconfirm.map((x) => `Rule out: ${x}`)]));
+  if (v.adjudication) {
+    const a = v.adjudication;
+    r.append(el("h2", "Decision"), el("p", `${a.decision.replaceAll("_", " ")}${a.leading_hypothesis && a.decision === "cause_accepted" ? ` for ${a.leading_hypothesis}` : ""}. Basis: ${a.basis}.`),
+      list(a.checks.map((c) => `${c.passed ? "PASS" : "FAIL"} ${c.name}: ${c.detail}`)));
+    if (a.unresolved_critic_issues.length) r.append(el("h3", "Unresolved critic issues"), list(a.unresolved_critic_issues));
+  }
+  const timeline = v.timeline_checks.filter((t) => t.status !== "not_applicable");
+  if (timeline.length) {
+    r.append(el("h2", "Timeline checks"), list(timeline.flatMap((t) => [
+      `${t.hypothesis_id}: ${t.status.replaceAll("_", " ")}; ${t.onset ? `first symptom ${t.onset} (${t.onset_refs.join(", ")})` : "no timestamped symptom"}`,
+      ...t.changes.map((c) => `  ${c.detail}`),
+      ...(t.may_have_worsened ? [`  symptoms rose further after the change: ${t.worsening_refs.join(", ")}`] : []),
+    ])));
+  }
+  if (v.evidence_inventory) {
+    r.append(el("h2", "Evidence availability"), el("p", `Retrieved: ${v.evidence_inventory.retrieved_signals.join(", ") || "nothing"}`, "ev"));
+    if (v.evidence_inventory.unavailable.length) r.append(el("h3", "Not obtained"), list(v.evidence_inventory.unavailable));
+  }
+  r.append(el("h2", "Recommended actions"), el("h3", "Immediate mitigation"), list(v.immediate_actions), el("h3", "Follow-up"), list(v.follow_up_actions), el("h3", "Preventive"), list(v.preventive_actions));
+  r.append(el("h2", "Missing evidence and limitations"));
+  const t = el("table"); const hr = el("tr"); ["Evidence task", "Tool", "Outcome", "Records"].forEach((h) => hr.append(el("th", h))); t.append(hr);
+  for (const c of v.evidence_coverage) { const tr = el("tr"); [c.task_id, c.tool, c.outcome + (c.error_code ? ` (${c.error_code})` : ""), String(c.record_count)].forEach((x) => tr.append(el("td", x))); t.append(tr); }
+  const scroll = el("div", null, "scroll"); scroll.append(t);
+  r.append(scroll, list(v.limitations));
+}
+
+init().catch((err) => $("capability").replaceChildren(el("div", `Could not load: ${err.message}`, "banner error")));
+</script>
+</body>
+</html>

@@ -22,9 +22,17 @@ app/
     base.py          LLMAgent: call model, validate, check, fall back, store envelope
     orchestrator.py  scope + plan + budgets; investigate() entry point
     observability.py, dependency.py, reasoning.py, critic.py, reporting.py
+  product/           product layer (Phase 5), reusing OrchestratorAgent unchanged:
+    sources.py       evidence worlds a user can investigate against (demo + EVAL-NN inputs; never labels)
+    service.py       in-memory background jobs: concurrency cap, hard time limit, bounded storage
+    report_view.py   user-facing report: every citation resolved to the retrieved record; Markdown
+  api/routes/        health; investigations (POST/GET jobs, report JSON/Markdown, sources, capabilities); ui
+  static/index.html  minimal web UI (no build step, no external assets; data inserted as text only)
+  baseline/          single-agent baseline (Phase 4): one model, same tools/rules, tool-calling loop
+  evaluation/        dataset builder/loader, heuristic offline model, runner, metrics, report (Phase 4;
+                     see docs/EVALUATION.md); `python -m app.evaluation offline|live`
   cli.py             python -m app.cli INC-2041  (live run; needs LLM settings)
   core/redaction.py  credential redaction for stored/logged error text
-  evaluation/        offline evaluation harness         (later phases)
 tests/               pytest suite
 data/fixtures/       synthetic JSONL evidence shared by all phases (see data/README.md)
 docs/                design notes
@@ -172,6 +180,35 @@ with the exact query, records, completeness and warnings.
   Phase 3 does not change this. It is harmless for the local fixtures. Agents use the
   SDK's async client, so cancelling an agent task does cancel its HTTP request.
 
+### Known limits of grounding and decision rules (Phases 6–7)
+
+- **Semantic grounding is model-dependent.** Code checks structure: the reference exists, its evidence class,
+  whether a flat metric supports a claimed increase, and timing. Whether a log line actually supports a specific
+  causal claim is left to the Reasoning and Critic models.
+- **Metric threshold.** A metric sample is "changed" if it deviates from the median of the earliest third of
+  retrieved samples by at least max(25%, 3 × noise). If the window starts after onset, a real change can look
+  flat. Changes below 25% never count. The 25% and 3× values are fixed choices, not tuned.
+- **Keyword heuristics.** These are fixed phrase lists, so paraphrases can slip through:
+  - spotting "increase" claims, used to move a flat metric to contradicting;
+  - spotting "missing evidence" claims;
+  - spotting causal wording in facts.
+- **Timeline checks.**
+  - The tolerances are fixed: ±60 s, a 5-minute rollback settle period, and 25% for "worsened".
+  - Delayed-effect changes aren't modelled.
+  - Only ERROR/CRITICAL logs and metric anomalies count as symptoms.
+  - A concurrent, unrelated incident on the same service can still set an early onset if it forms an episode.
+    A single stray error does not.
+  - A rollback that doesn't record what it reverted is never used to exclude a change.
+  - Missing or ambiguous timestamps never block a hypothesis.
+- **Evidence independence.**
+  - Different sources (logs, metrics, change history) are treated as independent by provenance.
+  - Correlation between metrics of the same service isn't modelled.
+  - A change's echo in the logs is detected only through its exact ID, version or config key.
+  - Several observations from one source are "unknown", never independent.
+- **Decision policy.** "Material contradiction" (direct counter-evidence spanning at least as many sources as
+  the support) is a policy choice. So is the requirement of two independent sources.
+- **Verification.** All Phase 6–7 rules are verified offline only. No real-model run has exercised them.
+
 ## Agents (Phase 3)
 
 Six agents, each a task handler on the engine. They communicate only through typed task
@@ -222,17 +259,89 @@ References are `"<task>"` (a whole result; cite it for gaps), `"<task>#<n>"` (a 
 and `"<task>/<finding-id>"` (an agent finding, which itself cites records). After schema
 validation, every agent's output is checked in code:
 
-- every reference must be one the agent was shown; invented references are rejected (retryable);
+- every reference must be one the agent was shown; invented references are rejected (retryable).
+  Short references are handled narrowly:
+  - A bare finding id ("dep-3") is rewritten to its full form ("dependency/dep-3") only if exactly
+    one finding shown to that agent has that id. Each rewrite is recorded in `adjustments`.
+  - Ambiguous ids, record references (`#n`) and anything else are never guessed; they are rejected
+    as before. Ambiguous ones get a specific message.
+  - The prompt also asks for the full form. The first live run produced `dep-3` and paid for a retry.
 - a failed or never-collected result can't be cited as support or contradiction, and an
   observation labelled `fact` can't rest on one;
-- reasoning confidence is **capped by code**: no direct evidence → low; high needs direct
-  support from ≥2 evidence sources and nothing contradicting it; insufficient evidence → all low;
-- the Critic adds rule-based issues (no support, only interpretations, absence used as support)
-  that the model can't overrule. An "accept" with rule issues becomes "revise";
-- the report may name a probable cause only if `conclusion_allowed`: final reasoning not
-  insufficient, the final critic verdict is accept, and the top hypothesis is at least medium
-  and strictly ahead of the next. Otherwise the conclusion is forced to `inconclusive`. Report
-  confidences can't exceed the reasoning's, and uncited "facts" are moved to assumptions.
+- every cited reference has an **evidence class** (`app/agents/evidence.py`, Phase 6):
+  - *direct*: a log line, a change record, or a metric sample that deviates from its series' baseline by
+    at least max(25% of the baseline, 3 × the baseline noise). The baseline is the median of the earliest third
+    of retrieved samples; the noise is the scaled median absolute deviation, but never below the smallest step
+    between distinct values (Phase 7). Jitter on a tiny baseline, such as an error rate alternating 0.2% / 0.3%,
+    is therefore not a change;
+  - *contextual*: a dependency edge (a relationship, not a failure), a past incident, an interpretation,
+    or a whole result;
+  - *no_change*: a metric within its normal range;
+  - *missing*: a failed or never-run query.
+- **citation checks** (`app/agents/grounding.py`): a *no_change* metric cited as support is removed. If the
+  hypothesis claims an increase, it is moved to contradicting instead, because a flat request rate cannot
+  support "increased load". The trigger is a fixed keyword list, so this part is a heuristic.
+- reasoning confidence is **capped by code**: no direct evidence → low, so topology or history alone can't
+  carry a hypothesis; high needs direct support from ≥2 independent sources and nothing contradicting it;
+  insufficient evidence → all low;
+- the Critic adds rule-based issues (no direct support, absence used as support) that the model can't
+  overrule. An "accept" with rule issues becomes "revise";
+- the **evidence inventory** (`app/agents/inventory.py`) records, from tool outcomes only, what was
+  retrieved, partial, matched nothing, failed, timed out or never ran. The report's limitations are the
+  inventory's genuine gaps plus model claims that survive validation. "X was unavailable" is removed when
+  X was retrieved;
+- **evidence independence** (`app/agents/independence.py`, Phase 7): direct evidence is grouped into
+  observations before anything is counted. These merge into one observation:
+  - identical records retrieved by different queries;
+  - log lines sharing a `trace_id`;
+  - a log line naming a change's ID, version (optionally `v`-prefixed) or config key. "Config reloaded:
+    db.pool.max_size=8" is an echo of that change, not corroboration of it.
+
+  Corroboration ("independent") needs observations from ≥ 2 different evidence sources. Several observations
+  from one source are reported as independence **unknown**, never assumed;
+- **timeline checks** (`app/agents/temporal.py`, Phase 7): for each hypothesis that cites a change, the first
+  symptom is compared with each change as UTC instants, never as strings. A symptom is an ERROR/CRITICAL log or
+  an anomalous metric on the cited and affected services, and a metric only bounds onset to its sampling
+  interval.
+
+  Onset is the first symptom of an **episode**: one followed by another symptom within 30 minutes. Isolated
+  earlier symptoms, such as a stray error an hour before, are named but not used (Phase 9). If every symptom
+  is isolated, no onset is established.
+
+  Each change is classed as:
+  - *precedes onset*;
+  - *follows onset*: it can't explain the onset. It "may have worsened" the incident only if a symptom metric
+    rose ≥ 25% above its pre-change peak afterwards;
+  - *ambiguous*: within ±60 s or the sampling interval;
+  - *unknown*: the timestamp is missing, invalid or has no timezone;
+  - *persisted after rollback*: a later successful rollback that **demonstrably reverted this change** was
+    followed by symptoms more than 5 minutes later. "Demonstrably" means its `previous_version` is the change's
+    version, or it names the change's ID or version. A rollback of some other change never excludes this one
+    (Phase 9).
+
+  A hypothesis whose cited changes all follow onset or persisted after rollback is capped to low and blocked
+  as the cause. Unknown or ambiguous timing never discards a hypothesis. The report shows a "Timeline checks"
+  section and explains each blocked change;
+- the **adjudication** (`app/agents/adjudication.py`) decides whether a cause may be named. It does not
+  take the critic's last verdict as the decision. It names a cause only when every listed check passes:
+  - a review completed;
+  - the leader is at least medium and strictly ahead;
+  - the leader's direct support is independently corroborated;
+  - its cited change is consistent with the onset timing;
+  - there is no material direct contradiction;
+  - no alternative has comparable direct support;
+  - every requested follow-up was obtained.
+
+  Critic issues that cite no direct evidence are reported as unresolved but don't block on their own.
+  Deterministic (fallback or rules) reports never name a cause. The report shows every check, PASS or FAIL;
+- **report rules** (`app/agents/report_rules.py`, shared with the baseline):
+  - the adjudication sets the conclusion;
+  - report confidences can't exceed the reasoning's;
+  - facts with causal or inferential language move to *interpretations*, and uncited facts move to
+    assumptions;
+  - if the model lists no assumptions while a causal hypothesis exists, the causal-link premise is
+    added, marked "(added by code)";
+  - `would_confirm` and `would_disconfirm` hold the evidence that would settle the leading hypothesis.
 
 Every adjustment code makes is recorded in the task's `adjustments`, so you can see what the
 model said and what was accepted.
@@ -246,7 +355,9 @@ model said and what was accepted.
 | Tasks per investigation | 40 | engine `max_tasks`; follow-ups beyond it are rejected |
 | Model/tool attempts in total | 80 | engine `max_total_attempts` |
 | Attempts per agent / evidence task | 2 / 2 | `RetryPolicy`; only transient errors are retried |
-| Agent task timeout | `LLM_TIMEOUT_SECONDS` + 30 s | engine per-attempt timeout |
+| Model request timeout | 120 s (`LLM_TIMEOUT_SECONDS`) | SDK, per request; ends as a retryable `model_timeout` |
+| Agent task timeout | `LLM_TIMEOUT_SECONDS` + 30 s | engine per-attempt backstop; always longer than the SDK timeout |
+| Deadline must fit one attempt | `INVESTIGATION_DEADLINE_SECONDS` ≥ `LLM_TIMEOUT_SECONDS` + 30 | checked by `AgentConfig.from_settings`; the CLI exits 2 if not |
 | Deadline | 300 s (`INVESTIGATION_DEADLINE_SECONDS`) | engine; running tasks cancelled, rest skipped |
 
 A report always exists:
@@ -276,7 +387,7 @@ The SDK validates the model's text against the output model inside `responses.pa
 our own validation. `OpenAIClient.calls` records each call's agent, outcome, latency and token
 usage (no content), and the CLI prints these totals.
 
-**Live verification status: verified once (2026-10-26, `gpt-4o-mini`, SDK 3.37.0).** One run of
+**Live verification status: two billed runs, both with `gpt-4o-mini` and SDK 3.37.0.** The first was one run of
 `python -m app.cli INC-2041`:
 - 9 model calls, all HTTP 200, with all six output schemas accepted as strict structured output.
 - The investigation `completed` in 104 s and 17 attempts, using 55,052 input and 5,743 output tokens.
@@ -286,4 +397,9 @@ usage (no content), and the CLI prints these totals.
 - The report was **inconclusive** with five low-confidence hypotheses. The final critic verdict was
   still "revise" when the round limit was reached.
 
-This verifies the integration, not the reasoning quality; see README, "Live smoke test".
+The second was one run of EVAL-01 through the product API (2026-10-27): 9 model calls, 53,390 input and 5,493
+output tokens, 67.7 s, inconclusive with the correct cause ranked first. Its outputs are preserved byte for byte in
+`artifacts/live-runs/EVAL-01/` and analysed in `docs/LIVE_RUN_EVAL01_ANALYSIS.md`.
+
+Both runs predate the Phase 6 and 7 decision logic, which has been tested only offline. Two runs verify the
+integration; they are not a measurement of reasoning quality. See README, "Live smoke test".

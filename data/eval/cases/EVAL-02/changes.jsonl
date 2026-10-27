@@ -1,0 +1,1 @@
+{"change_id": "CHG-E02-1", "timestamp": "2026-09-02T13:52:00Z", "service": "orders-service", "change_type": "deployment", "status": "succeeded", "summary": "Update order confirmation email template", "version": "6.0.0", "previous_version": "5.9.4", "changed_by": "deploy-bot"}

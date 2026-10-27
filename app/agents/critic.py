@@ -229,10 +229,12 @@ def rule_issues(reasoning: ReasoningResult, refs: RefIndex) -> list[CritiqueIssu
             add(h.hypothesis_id, "unsupported_claim", "No supporting evidence is cited.")
             continue
         if not any(refs.is_direct_evidence(r) for r in h.supporting_refs):
+            reasons = "; ".join(sorted({refs.classify(r).reason for r in h.supporting_refs}))[:300]
             add(
                 h.hypothesis_id,
                 "unsupported_claim",
-                "Supported only by interpretations, not by tool records or observed facts.",
+                f"No direct incident evidence: the cited support is context only ({reasons}). A dependency edge or past "
+                "incident shows a relationship, not that anything failed during this incident.",
                 h.supporting_refs,
             )
         absence = [r for r in h.supporting_refs if refs.outcome(r) is EvidenceOutcome.NO_MATCHES]

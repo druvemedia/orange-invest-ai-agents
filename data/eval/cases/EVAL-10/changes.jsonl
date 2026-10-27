@@ -1,0 +1,2 @@
+{"change_id": "CHG-E10-1", "timestamp": "2026-09-10T14:54:00Z", "service": "payments-api", "change_type": "deployment", "status": "succeeded", "summary": "Upgrade ORM library", "version": "2.20.0", "previous_version": "2.19.4"}
+{"change_id": "CHG-E10-2", "timestamp": "2026-09-10T15:10:00Z", "service": "payments-api", "change_type": "rollback", "status": "succeeded", "summary": "Rollback to v2.19.4", "version": "2.19.4", "previous_version": "2.20.0"}

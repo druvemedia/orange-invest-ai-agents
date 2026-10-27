@@ -1,0 +1,11 @@
+{
+  "incident_id": "EVAL-07",
+  "summary": "Users being logged out and pages failing to load",
+  "affected_services": [
+    "web-frontend"
+  ],
+  "severity": "high",
+  "reported_at": "2026-09-07T19:12:00Z",
+  "reporter": "on-call SRE",
+  "context": null
+}

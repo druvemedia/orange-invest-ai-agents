@@ -1,0 +1,9 @@
+{
+  "incident_id": "EVAL-09",
+  "summary": "A few users said the site felt slow this afternoon",
+  "affected_services": [],
+  "severity": null,
+  "reported_at": "2026-09-09T13:00:00Z",
+  "reporter": null,
+  "context": "Single anecdotal report; no alert fired."
+}

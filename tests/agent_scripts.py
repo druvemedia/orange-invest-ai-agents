@@ -201,7 +201,10 @@ def report(conclusion: str = "probable_cause_identified"):
                 for i, h in enumerate(hyps, start=1)
             ],
             "facts": [{"text": "Pool utilisation reached 100%.", "evidence_refs": ["observability/obs-4"]}] if hyps else [],
+            "interpretations": [],
             "assumptions": [],
+            "would_confirm": [],
+            "would_disconfirm": [],
             "limitations": ["Report-specific limitation."],
             "corrective_actions": [{"action": "Restore db.pool.max_size to 50.", "timing": "immediate", "hypothesis_id": "H1"}]
             if hyps else [],

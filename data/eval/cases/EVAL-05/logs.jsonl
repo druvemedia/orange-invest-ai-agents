@@ -1,0 +1,7 @@
+{"timestamp": "2026-09-05T08:00:00Z", "service": "notification-service", "level": "ERROR", "message": "email-provider returned HTTP 503 Service Unavailable"}
+{"timestamp": "2026-09-05T08:04:00Z", "service": "notification-service", "level": "ERROR", "message": "email-provider returned HTTP 503 Service Unavailable"}
+{"timestamp": "2026-09-05T08:12:00Z", "service": "notification-service", "level": "ERROR", "message": "email-provider returned HTTP 503 Service Unavailable"}
+{"timestamp": "2026-09-05T08:15:00Z", "service": "orders-service", "level": "INFO", "message": "Order ORD-77120 created"}
+{"timestamp": "2026-09-05T08:20:00Z", "service": "notification-service", "level": "WARNING", "message": "Retry queue depth 1200; deferring sends"}
+{"timestamp": "2026-09-05T08:25:00Z", "service": "notification-service", "level": "ERROR", "message": "email-provider returned HTTP 503 Service Unavailable"}
+{"timestamp": "2026-09-05T08:40:00Z", "service": "notification-service", "level": "ERROR", "message": "email-provider returned HTTP 503 Service Unavailable"}

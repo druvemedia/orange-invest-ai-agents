@@ -1,0 +1,2 @@
+# Preserved artifacts are byte-for-byte copies (see artifacts/live-runs/*/SHA256SUMS); never "fix" their whitespace.
+artifacts/** -whitespace

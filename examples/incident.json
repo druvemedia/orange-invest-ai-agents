@@ -1,0 +1,9 @@
+{
+  "summary": "Order placement failing since shortly after today's orders-service deploy",
+  "reported_at": "2026-09-02T14:05:00Z",
+  "affected_services": ["orders-service"],
+  "severity": "high",
+  "reporter": "orders team",
+  "context": "The deploy went out around 13:50 UTC; errors were noticed soon after.",
+  "evidence_source": "EVAL-02"
+}

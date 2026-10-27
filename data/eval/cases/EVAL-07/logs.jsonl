@@ -1,0 +1,4 @@
+{"timestamp": "2026-09-07T19:01:00Z", "service": "redis-cache", "level": "WARNING", "message": "OOM command not allowed when used memory > 'maxmemory'"}
+{"timestamp": "2026-09-07T19:02:00Z", "service": "web-frontend", "level": "ERROR", "message": "Session lookup failed: cache error (OOM)", "trace_id": "e7a"}
+{"timestamp": "2026-09-07T19:09:00Z", "service": "redis-cache", "level": "WARNING", "message": "OOM command not allowed when used memory > 'maxmemory'"}
+{"timestamp": "2026-09-07T19:10:00Z", "service": "web-frontend", "level": "ERROR", "message": "Session lookup failed: cache error (OOM)", "trace_id": "e7b"}
