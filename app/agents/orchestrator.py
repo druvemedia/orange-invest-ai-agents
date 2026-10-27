@@ -10,7 +10,7 @@ Critic loop:     critic.rN ──follow-ups──► ev.cN.* , reasoning.r(N+1),
 """
 
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -24,7 +24,7 @@ from app.agents.contracts import (
 )
 from app.agents.critic import CriticAgent
 from app.agents.dependency import DependencyAgent
-from app.agents.evidence import RefIndex
+from app.agents.evidence import AFFECTED_SERVICES_INPUT, REPORTED_AT_INPUT, RefIndex, metric_query_start
 from app.agents.observability import ObservabilityAgent
 from app.agents.reasoning import ReasoningAgent
 from app.agents.reporting import ReportingAgent, build_fallback_report
@@ -177,14 +177,19 @@ incident report, which may be incomplete:
 
     def finish(self, ctx, output, prepared):
         scope, adjustments = resolve_scope(output, ctx.incident, self.config)
-        return scope, adjustments, self.plan_tasks(scope)
+        return scope, adjustments, self.plan_tasks(scope, ctx.incident.reported_at, ctx.incident.affected_services)
 
-    def plan_tasks(self, scope: InvestigationScope) -> list[TaskSpec]:
+    def plan_tasks(
+        self, scope: InvestigationScope, reported_at: datetime | None = None,
+        affected_services: list[str] | None = None,
+    ) -> list[TaskSpec]:
         window = {"start": scope.window_start.isoformat(), "end": scope.window_end.isoformat()}
+        # Metrics also need samples from before the incident, to compare its readings with (see evidence.py).
+        metric_window = {**window, "start": metric_query_start(scope.window_start, reported_at).isoformat()}
         ev = dict(retry=self.config.evidence_retry, timeout_seconds=self.config.evidence_timeout_seconds)
         evidence = [
             evidence_task("ev.logs", "search_logs", {**window, "min_level": "WARNING", "limit": 200}, **ev),
-            evidence_task("ev.metrics", "query_metrics", {**window, "limit": 1000}, **ev),
+            evidence_task("ev.metrics", "query_metrics", {**metric_window, "limit": 1000}, **ev),
             evidence_task(
                 "ev.changes",
                 "get_change_history",
@@ -202,6 +207,11 @@ incident report, which may be incomplete:
                 **ev,
             ),
         ]
+        # The incident context bounds the onset for metric baselines (see evidence.py).
+        context = {REPORTED_AT_INPUT: reported_at.isoformat()} if reported_at is not None else {}
+        if affected_services is not None:
+            context[AFFECTED_SERVICES_INPUT] = list(affected_services)
+        evidence = [t.model_copy(update={"inputs": {**t.inputs, **context}}) for t in evidence]
         ids = [t.task_id for t in evidence]
         deps_ids = [i for i in ids if i.startswith("ev.deps.")]
         reasoning_deps = ["orchestrate", "observability", "dependency", *ids]

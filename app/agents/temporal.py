@@ -26,35 +26,15 @@ metric anomalies, and whether a symptom belongs to this incident or a concurrent
 """
 
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
-from typing import Any
+from datetime import datetime, timedelta
 
 from app.agents.contracts import ChangeTiming, Hypothesis, TemporalAssessment
-from app.agents.evidence import EvidenceClass, RefIndex
+from app.agents.evidence import EPISODE_GAP, SYMPTOM_LEVELS, EvidenceClass, RefIndex, parse_instant
 from app.schemas.evidence import EvidenceSource
 
 TOLERANCE = timedelta(seconds=60)
 ROLLBACK_SETTLE = timedelta(minutes=5)
-# Onset is the first symptom followed by another within this gap; isolated earlier symptoms are ignored.
-EPISODE_GAP = timedelta(minutes=30)
 WORSENING_THRESHOLD = 0.25
-SYMPTOM_LEVELS = frozenset({"ERROR", "CRITICAL"})
-
-
-def parse_instant(value: Any) -> datetime | None:
-    """An aware datetime in UTC, or None if missing, unparseable or without a timezone."""
-    if isinstance(value, datetime):
-        dt = value
-    elif isinstance(value, str) and value.strip():
-        try:
-            dt = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
-        except ValueError:
-            return None
-    else:
-        return None
-    if dt.tzinfo is None or dt.utcoffset() is None:
-        return None
-    return dt.astimezone(UTC)
 
 
 def _iso(dt: datetime | None) -> str | None:

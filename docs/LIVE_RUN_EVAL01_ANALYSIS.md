@@ -101,11 +101,14 @@ interpretations, would-confirm and would-disconfirm fields. Every citation resol
 **Against the gold label:** top-1 and top-3 correct, key-evidence recall 2/2, outcome `missed_inconclusive`, the same as
 run 1. HTTP success and schema acceptance did not produce a correct conclusion.
 
-**Defects observed (not fixed; documented only):**
+**Defects observed** (the first is fixed offline since; the others are documented only):
 - **Baseline contamination.** The model scoped the metrics query to start at onset (10:00), so every pool sample was
   post-incident. 100% utilisation was classified `no_change` and listed as *contradicting* the correct hypothesis.
-  The case data has 37–38% before onset. This is the known limit of an earliest-samples baseline: code does not
-  widen a window that starts at onset.
+  The case data has 37–38% before onset. The cause was an earliest-samples baseline that code never widened.
+  *Fixed after this run, offline only:* metrics are now fetched from at least 60 min before the reported time,
+  and the baseline uses only samples before the estimated onset. The same window now gives "100 vs baseline
+  38.4: changed", or "insufficient baseline" when no earlier samples exist (`tests/test_metric_baseline.py`).
+  This has not been re-checked with a real model.
 - **Weak citations.** One hypothesis about "dependent services" cites an interpretation about the config change, and
   another cites the unrelated orders deploy as support.
 - **Over-eager fact checks.** Two facts were moved to interpretations by mistake: "indicate" matches the causal-language

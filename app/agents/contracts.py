@@ -81,7 +81,8 @@ class MetricSummary(StrictModel):
     metric_name: str
     unit: str
     samples: int
-    baseline: float  # mean of the earliest third of samples in the window
+    baseline: float | None  # median of the samples before the estimated onset; None if there are too few
+    baseline_basis: str  # which samples the baseline uses, or why there is none (see app.agents.evidence)
     minimum: float
     peak: float
     peak_at: datetime

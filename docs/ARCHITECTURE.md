@@ -185,9 +185,25 @@ with the exact query, records, completeness and warnings.
 - **Semantic grounding is model-dependent.** Code checks structure: the reference exists, its evidence class,
   whether a flat metric supports a claimed increase, and timing. Whether a log line actually supports a specific
   causal claim is left to the Reasoning and Critic models.
-- **Metric threshold.** A metric sample is "changed" if it deviates from the median of the earliest third of
-  retrieved samples by at least max(25%, 3 × noise). If the window starts after onset, a real change can look
-  flat. Changes below 25% never count. The 25% and 3× values are fixed choices, not tuned.
+- **Metric threshold.** A metric sample is "changed" if it deviates from its pre-onset baseline by at least
+  max(25%, 3 × noise). Changes below 25% never count. The 25% and 3× values are fixed choices, not tuned.
+- **Metric baseline.**
+  - The onset is estimated without metrics: the first ERROR-log episode (two or more errors within 30 min) on
+    the incident's affected services, or on any service if none are listed, capped at the reported time.
+    A lone error is not an episode.
+  - If an incident is reported long after it began and no error logs date it, the baseline can still include
+    incident samples. The median tolerates a minority of them.
+  - An earlier error episode on an affected service, even an unrelated one, moves the onset early. That can
+    leave too few samples, so the metric becomes "insufficient baseline": its evidence is lost, but it is never
+    misread as normal.
+  - The metric summaries shown to the Observability model are built from `ev.logs` and `ev.metrics` only. The
+    final report also sees the critic's follow-up queries, so its onset estimate, and so a metric's class, can
+    differ from what the model was shown.
+  - Only the planned `ev.metrics` query is widened to include a baseline; the critic's follow-up metric queries
+    are not. The single-agent baseline widens every metric query, so the two differ only if `ev.metrics` fails.
+    Its widened queries can also coincide, and a second one is then rejected as "the same query was already run".
+  - The widened metric query has no upper bound beyond the scope rules: it can span about 9 hours. At the tool's
+    record limit, whole series are dropped in service/metric order and the result is marked partial.
 - **Keyword heuristics.** These are fixed phrase lists, so paraphrases can slip through:
   - spotting "increase" claims, used to move a flat metric to contradicting;
   - spotting "missing evidence" claims;
@@ -270,8 +286,12 @@ validation, every agent's output is checked in code:
   observation labelled `fact` can't rest on one;
 - every cited reference has an **evidence class** (`app/agents/evidence.py`, Phase 6):
   - *direct*: a log line, a change record, or a metric sample that deviates from its series' baseline by
-    at least max(25% of the baseline, 3 × the baseline noise). The baseline is the median of the earliest third
-    of retrieved samples; the noise is the scaled median absolute deviation, but never below the smallest step
+    at least max(25% of the baseline, 3 × the baseline noise). The baseline is the median of the samples taken
+    before the estimated onset (the first ERROR-log episode on the affected services, capped at the reported
+    time; see "Known limits"); fewer than 3 such
+    samples is an *insufficient baseline* (contextual), never "no change". Metric queries start at least 60 min
+    before the reported time so a baseline exists, and the metric summaries shown to the model use the same
+    baseline. The noise is the scaled median absolute deviation, but never below the smallest step
     between distinct values (Phase 7). Jitter on a tiny baseline, such as an error rate alternating 0.2% / 0.3%,
     is therefore not a change;
   - *contextual*: a dependency edge (a relationship, not a failure), a past incident, an interpretation,

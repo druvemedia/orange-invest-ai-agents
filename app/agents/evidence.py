@@ -10,16 +10,32 @@ Every reference resolves back to evidence tool results, so provenance is never l
 
 Evidence classes (deterministic, see ``RefIndex.classify``):
     direct      an incident-specific observation: a log line, a change record, or a metric sample that
-                deviates from its own series' baseline in the retrieved data by more than its noise
+                deviates from its own series' pre-incident baseline by more than its noise
     contextual  true but not evidence of failure in this incident: a dependency edge (a relationship),
                 a past incident, an interpretation, a whole result, or a metric that cannot be compared
+                (too few samples, or too few before the estimated onset: an insufficient baseline)
     no_change   a metric sample within the normal range of its series: it cannot show an increase or drop
     missing     a result whose tool failed or never ran: it shows a gap, not evidence either way
+
+Metric baseline. A metric sample is compared with the samples of its series taken before the estimated
+incident onset, never with the incident's own readings. The onset estimate deliberately ignores metrics (it
+would otherwise depend on the classification it feeds): it is the first ERROR/CRITICAL log of an episode
+(one followed by another within EPISODE_GAP) on the incident's affected services, or on any service if none
+are known; or the incident's reported time if that is earlier or no episode is found. Unlike the timeline
+check, a lone error is not an episode here, so one stray error cannot empty the baseline. A metric can
+depart a few minutes before the first error log; the median keeps such boundary samples from shifting the
+baseline. Fewer than MIN_BASELINE_SAMPLES samples before the onset give an insufficient baseline
+(contextual), not "no change". Without any onset information (no reported time and no error logs) the earliest
+third of the retrieved samples is used, with the same minimum. Evidence planners fetch metrics from at least
+METRIC_BASELINE_LOOKBACK before the reported time so that a baseline exists.
 """
 
 from collections.abc import Iterable, Mapping
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
+
+from pydantic import Field
 
 from app.orchestration.models import (
     EVIDENCE_TASK_KIND,
@@ -32,10 +48,41 @@ from app.schemas.common import StrictModel
 from app.schemas.evidence import EvidenceSource
 
 UNUSABLE_AS_SUPPORT = frozenset({EvidenceOutcome.FAILED, EvidenceOutcome.NOT_COLLECTED})
-# A metric sample is a change only if it differs from its series' baseline (the median of the earliest third
-# of retrieved samples) by at least this fraction AND by at least NOISE_SIGMAS times the baseline noise.
+# A metric sample is a change only if it differs from its series' baseline (the median of its samples before
+# the estimated onset) by at least this fraction AND by at least NOISE_SIGMAS times the baseline noise.
 CHANGE_THRESHOLD = 0.25
 NOISE_SIGMAS = 3.0
+MIN_BASELINE_SAMPLES = 3
+# Metric queries start at least this long before the reported time, so pre-incident samples are retrieved.
+METRIC_BASELINE_LOOKBACK = timedelta(minutes=60)
+# Onset is the first symptom followed by another within this gap; isolated earlier symptoms are ignored.
+EPISODE_GAP = timedelta(minutes=30)
+SYMPTOM_LEVELS = frozenset({"ERROR", "CRITICAL"})
+# Task input keys under which evidence planners record the incident's reported time (ISO 8601) and its
+# affected services, which bound the onset estimate.
+REPORTED_AT_INPUT = "incident_reported_at"
+AFFECTED_SERVICES_INPUT = "incident_affected_services"
+
+
+def parse_instant(value: Any) -> datetime | None:
+    """An aware datetime in UTC, or None if missing, unparseable or without a timezone."""
+    if isinstance(value, datetime):
+        dt = value
+    elif isinstance(value, str) and value.strip():
+        try:
+            dt = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    else:
+        return None
+    if dt.tzinfo is None or dt.utcoffset() is None:
+        return None
+    return dt.astimezone(UTC)
+
+
+def metric_query_start(window_start: datetime, reported_at: datetime | None) -> datetime:
+    """Start a metric query early enough to include a pre-incident baseline."""
+    return min(window_start, reported_at - METRIC_BASELINE_LOOKBACK) if reported_at else window_start
 
 
 class EvidenceItem(StrictModel):
@@ -56,6 +103,9 @@ class EvidenceSet(StrictModel):
     items: list[EvidenceItem]
     error_code: str | None = None
     requested_by: str | None = None  # e.g. "critic.r1" for a follow-up query
+    # Bound the onset for metric baselines. Code-only: excluded from what the model is shown.
+    incident_reported_at: str | None = Field(default=None, exclude=True)
+    incident_affected_services: list[str] | None = Field(default=None, exclude=True)
 
 
 def evidence_sets(tasks: Mapping[str, TaskRecord], task_ids: Iterable[str] | None = None) -> list[EvidenceSet]:
@@ -86,6 +136,8 @@ def evidence_sets(tasks: Mapping[str, TaskRecord], task_ids: Iterable[str] | Non
                 items=items,
                 error_code=record.error.code.value if record.error else None,
                 requested_by=record.added_by if record.added_by and record.added_by != "orchestrate" else None,
+                incident_reported_at=record.spec.inputs.get(REPORTED_AT_INPUT),
+                incident_affected_services=record.spec.inputs.get(AFFECTED_SERVICES_INPUT),
             )
         )
     return sets
@@ -113,20 +165,41 @@ class RefIndex:
         self._records: dict[str, tuple[EvidenceSource | None, dict[str, Any]]] = {}
         self._finding_kind: dict[str, str] = {}
         self._finding_refs: dict[str, list[str]] = {}
-        self._series: dict[tuple[str, str], list[tuple[str, float]]] = {}
+        # Per series: sample time -> value. Keyed by time, so a sample retrieved twice counts once.
+        self._series: dict[tuple[str, str], dict[datetime, float]] = {}
+        self._reported_at: datetime | None = None
+        self._affected: frozenset[str] | None = None
+        self._error_times: dict[str, set[datetime]] = {}  # per service
 
     def add_sets(self, sets: Iterable[EvidenceSet]) -> "RefIndex":
         for s in sets:
             sources = frozenset({s.source}) if s.source else frozenset()
             self._sources[s.ref] = sources
             self._set_outcome[s.ref] = s.outcome
+            if self._reported_at is None:
+                self._reported_at = parse_instant(s.incident_reported_at)
+            if self._affected is None and s.incident_affected_services is not None:
+                self._affected = frozenset(s.incident_affected_services)
             for item in s.items:
                 self._sources[item.ref] = sources
                 self._records[item.ref] = (s.source, item.record)
-                if s.source is EvidenceSource.METRICS:
-                    r = item.record
-                    self._series.setdefault((r["service"], r["metric_name"]), []).append((r["timestamp"], r["value"]))
+                r = item.record
+                t = parse_instant(r.get("timestamp"))
+                if s.source is EvidenceSource.METRICS and t:
+                    self._series.setdefault((r["service"], r["metric_name"]), {}).setdefault(t, r["value"])
+                elif s.source is EvidenceSource.LOGS and t and r.get("level") in SYMPTOM_LEVELS:
+                    self._error_times.setdefault(r.get("service"), set()).add(t)
         return self
+
+    def onset_estimate(self) -> tuple[datetime | None, str]:
+        """The estimated incident onset that bounds metric baselines, and what it is based on (see module doc)."""
+        services = self._affected or self._error_times.keys()  # unknown affected services: every service counts
+        episode = _episode_start(sorted(set().union(*(self._error_times.get(s, set()) for s in services))))
+        if episode and (self._reported_at is None or episode < self._reported_at):
+            return episode, "the first ERROR log of the episode"
+        if self._reported_at:
+            return self._reported_at, "the reported time"
+        return None, "unknown"
 
     def add_finding(self, ref: str, kind: str, evidence_refs: Iterable[str]) -> None:
         refs = list(evidence_refs)
@@ -227,12 +300,26 @@ class RefIndex:
             return self._classify_metric(r)
         return Classification(evidence_class=EvidenceClass.CONTEXTUAL, reason="unclassified record")
 
+    def metric_baseline(self, service: str, metric: str) -> tuple[list[float] | None, str]:
+        """The sorted baseline samples of a series and how they were chosen, or (None, why) if there are too few."""
+        points = sorted(self._series.get((service, metric), {}).items())
+        onset, basis = self.onset_estimate()
+        if onset is None:
+            head = sorted(v for _, v in points[: len(points) // 3])
+            when = "in the earliest third of the retrieved samples (onset unknown)"
+        else:
+            head = sorted(v for t, v in points if t < onset)
+            when = f"before the estimated onset {onset:%Y-%m-%dT%H:%M:%SZ}, {basis}"
+        if len(head) < MIN_BASELINE_SAMPLES:
+            return None, f"insufficient baseline ({len(head)} sample(s) {when})"
+        return head, f"{len(head)} samples {when}"
+
     def _classify_metric(self, r: dict[str, Any]) -> Classification:
         name = f"{r['service']} {r['metric_name']}"
-        points = sorted(self._series.get((r["service"], r["metric_name"]), []))
-        if len(points) < 3:
-            return Classification(evidence_class=EvidenceClass.CONTEXTUAL, reason=f"{name}: too few samples to compare")
-        head = sorted(v for _, v in points[: max(1, len(points) // 3)])
+        head, how = self.metric_baseline(r["service"], r["metric_name"])
+        if head is None:
+            return Classification(evidence_class=EvidenceClass.CONTEXTUAL,
+                                  reason=f"{name} = {r['value']:g}: {how}, so it cannot show a change or its absence")
         baseline = _median(head)
         # Robust noise estimate: scaled median absolute deviation, but never below the smallest step between
         # distinct baseline values (quantised series such as an error rate alternating 0.2% / 0.3%).
@@ -254,6 +341,14 @@ class RefIndex:
             elif self.is_direct_evidence(ref):
                 leaves.append(ref)
         return leaves
+
+
+def _episode_start(times: list[datetime]) -> datetime | None:
+    """The first of ``times`` (sorted) followed by another within EPISODE_GAP. A lone time is not an episode."""
+    for i, t in enumerate(times[:-1]):
+        if times[i + 1] - t <= EPISODE_GAP:
+            return t
+    return None
 
 
 def _median(sorted_values: list[float]) -> float:

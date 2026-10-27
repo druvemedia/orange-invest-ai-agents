@@ -1,6 +1,8 @@
 """Observability agent: turns log and metric evidence into cited observations."""
 
 from collections import defaultdict
+from datetime import datetime
+from statistics import median
 from typing import Any
 
 from app.agents.base import LLMAgent, Prepared, require_scope, unknown_ref_problems
@@ -10,7 +12,7 @@ from app.agents.contracts import (
     ObservabilityOutput,
     ObservabilityResult,
 )
-from app.agents.evidence import EvidenceSet, RefIndex, duplicate_ids, evidence_sets
+from app.agents.evidence import EvidenceSet, RefIndex, duplicate_ids, evidence_sets, parse_instant
 from app.orchestration import TaskContext
 from app.orchestration.models import EvidenceOutcome
 from app.schemas.evidence import EvidenceSource
@@ -39,7 +41,7 @@ Do not name a root cause; that is the Reasoning agent's job.
         refs = RefIndex().add_sets(sets)
         return Prepared(
             input=ObservabilityInput(
-                incident=ctx.incident, scope=scope, evidence=sets, metric_summaries=summarise_metrics(sets)
+                incident=ctx.incident, scope=scope, evidence=sets, metric_summaries=summarise_metrics(sets, refs)
             ),
             refs=refs,
             consumed=sorted(ctx.dependencies),
@@ -84,19 +86,24 @@ Do not name a root cause; that is the Reasoning agent's job.
         return result, [], []
 
 
-def summarise_metrics(sets: list[EvidenceSet]) -> list[MetricSummary]:
-    series: dict[tuple[str, str, str], list[tuple[str, dict[str, Any]]]] = defaultdict(list)
+def summarise_metrics(sets: list[EvidenceSet], refs: RefIndex | None = None) -> list[MetricSummary]:
+    """Per-series summaries for the model. The baseline is the same pre-onset baseline the classifier uses."""
+    refs = refs or RefIndex().add_sets(sets)
+    # Per series: sample time -> (ref, record). Keyed by normalised time, like the classifier's series, so a sample
+    # retrieved twice counts once and the first retrieval's reference is kept.
+    series: dict[tuple[str, str, str], dict[datetime, tuple[str, dict[str, Any]]]] = defaultdict(dict)
     for s in sets:
         if s.source is not EvidenceSource.METRICS:
             continue
         for item in s.items:
             r = item.record
-            series[(r["service"], r["metric_name"], r["unit"])].append((item.ref, r))
+            if (t := parse_instant(r.get("timestamp"))) is not None:
+                series[(r["service"], r["metric_name"], r["unit"])].setdefault(t, (item.ref, r))
     summaries = []
-    for (service, metric, unit), points in series.items():
-        points.sort(key=lambda p: p[1]["timestamp"])
+    for (service, metric, unit), by_time in series.items():
+        points = [by_time[t] for t in sorted(by_time)]
         values = [p[1]["value"] for p in points]
-        head = values[: max(1, len(values) // 3)]
+        head, basis = refs.metric_baseline(service, metric)
         peak_index = max(range(len(values)), key=values.__getitem__)
         summaries.append(
             MetricSummary(
@@ -104,7 +111,8 @@ def summarise_metrics(sets: list[EvidenceSet]) -> list[MetricSummary]:
                 metric_name=metric,
                 unit=unit,
                 samples=len(values),
-                baseline=round(sum(head) / len(head), 3),
+                baseline=round(median(head), 3) if head else None,
+                baseline_basis=f"median of {basis}" if head else basis,
                 minimum=min(values),
                 peak=values[peak_index],
                 peak_at=points[peak_index][1]["timestamp"],

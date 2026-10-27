@@ -153,11 +153,13 @@ def test_6a_invalid_or_zoneless_timestamps_are_unknown(when):
 
 def test_6b_orderings_within_precision_are_ambiguous():
     _, close = world(logs=[log("09:30")], changes=[change("D1", f"{DAY}09:30:40Z")])
-    series = [metric(f"09:{m:02d}", v) for m, v in [(0, 100), (5, 101), (10, 99), (15, 100), (20, 100), (25, 100), (30, 400)]]
+    # Ten samples, so the earliest third (the baseline when onset is unknown) has the required three.
+    series = [metric(f"08:{m}", 100) for m in (45, 50, 55)]
+    series += [metric(f"09:{m:02d}", v) for m, v in [(0, 100), (5, 101), (10, 99), (15, 100), (20, 100), (25, 100), (30, 400)]]
     _, sampled = world(changes=[change("D1", t("09:27"))], metrics=series)  # metric shows the change by 09:30, sampled every 5 min
 
     assert assess(hyp(["c#0", "l#0"]), close, ["api"]).status == "ordering_ambiguous"
-    s = assess(hyp(["c#0", "m#6"]), sampled, ["api"])
+    s = assess(hyp(["c#0", "m#9"]), sampled, ["api"])
     assert s.status == "ordering_ambiguous" and s.onset_precision_seconds == 300
 
 

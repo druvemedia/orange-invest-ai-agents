@@ -19,6 +19,7 @@ import asyncio
 import json
 import logging
 import time
+from datetime import datetime
 from typing import Any, Literal
 from uuid import uuid4
 
@@ -34,7 +35,7 @@ from app.agents.contracts import (
     Hypothesis,
     ReportOutput,
 )
-from app.agents.evidence import EvidenceItem, EvidenceSet, RefIndex, duplicate_ids
+from app.agents.evidence import EvidenceItem, EvidenceSet, RefIndex, duplicate_ids, metric_query_start, parse_instant
 from app.agents.adjudication import adjudicate
 from app.agents.inventory import build_inventory
 from app.agents.reasoning import apply_citation_checks, apply_timeline, cap_confidence
@@ -44,7 +45,7 @@ from app.core.redaction import redact
 from app.llm import LLMClient, LLMError, LLMErrorKind, LLMRequest
 from app.orchestration.models import EvidenceOutcome
 from app.schemas.common import StrictModel
-from app.schemas.evidence import EvidenceResult, EvidenceStatus
+from app.schemas.evidence import EvidenceResult, EvidenceSource, EvidenceStatus
 from app.schemas.incident import IncidentReport
 from app.tools.base import EvidenceTool
 from app.tools.datastore import summarize_validation_error
@@ -160,7 +161,9 @@ class BaselineResult(StrictModel):
 
 
 class _State:
-    def __init__(self) -> None:
+    def __init__(self, reported_at: datetime | None = None, affected_services: list[str] | None = None) -> None:
+        self.reported_at = reported_at
+        self.affected_services = affected_services
         self.sets: list[EvidenceSet] = []
         self.query_keys: set[str] = set()
         self.tool_calls_used = 0
@@ -180,7 +183,7 @@ class SingleAgentInvestigator:
 
     async def investigate(self, incident: IncidentReport, investigation_id: str | None = None) -> BaselineResult:
         investigation_id = investigation_id or f"base-{uuid4().hex[:12]}"
-        state = _State()
+        state = _State(incident.reported_at, incident.affected_services)
         started = time.perf_counter()
         try:
             async with asyncio.timeout(self.config.deadline_seconds):
@@ -306,6 +309,9 @@ class SingleAgentInvestigator:
                     if not isinstance(raw, dict):
                         raise ValueError("query_json must be a JSON object")
                     query = tool.query_model.model_validate(raw).model_dump(mode="json")
+                    if tool.source is EvidenceSource.METRICS and (start := parse_instant(query.get("start"))):
+                        # Same guarantee as the multi-agent plan: metrics include a pre-incident baseline.
+                        query["start"] = metric_query_start(start, state.reported_at).isoformat()
                 except ValidationError as exc:
                     reason = f"invalid query: {summarize_validation_error(exc)}"
                 except ValueError as exc:
@@ -334,23 +340,26 @@ class SingleAgentInvestigator:
                 continue
             if result.status is not EvidenceStatus.FAILED or not all(e.retryable for e in result.errors):
                 break
-        return evidence_set(ref, tool.name, query, result)
+        return evidence_set(ref, tool.name, query, result, state.reported_at, state.affected_services)
 
 
 # --- Helpers -----------------------------------------------------------------------------------------
 
 
-def evidence_set(ref: str, tool_name: str, query: dict, result: EvidenceResult | None) -> EvidenceSet:
+def evidence_set(ref: str, tool_name: str, query: dict, result: EvidenceResult | None,
+                 reported_at: datetime | None = None, affected_services: list[str] | None = None) -> EvidenceSet:
+    context = dict(incident_reported_at=reported_at.isoformat() if reported_at else None,
+                   incident_affected_services=list(affected_services) if affected_services is not None else None)
     if result is None:
         return EvidenceSet(ref=ref, tool=tool_name, source=None, outcome=EvidenceOutcome.FAILED, query=query,
-                           warnings=[], error="The tool call timed out.", items=[], error_code="timeout")
+                           warnings=[], error="The tool call timed out.", items=[], error_code="timeout", **context)
     outcome = _OUTCOMES[result.status]
     items = [] if outcome is EvidenceOutcome.FAILED else [
         EvidenceItem(ref=f"{ref}#{i}", record=r.model_dump(mode="json")) for i, r in enumerate(result.records)
     ]
     return EvidenceSet(ref=ref, tool=tool_name, source=result.source, outcome=outcome, query=result.query,
                        warnings=list(result.warnings), error=result.errors[0].message if result.errors else None,
-                       items=items, error_code=result.errors[0].code.value if result.errors else None)
+                       items=items, error_code=result.errors[0].code.value if result.errors else None, **context)
 
 
 def check_step(out: BaselineStep, refs: RefIndex, must_report: bool) -> list[str]:
