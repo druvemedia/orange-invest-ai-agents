@@ -5,7 +5,8 @@
     python -m app.cli --incident-file my_incident.json --source demo
     python -m app.cli --list                                # evidence sources and example incidents
 
-The model is chosen by settings: LLM_PROVIDER=openai (+ LLM_MODEL, LLM_API_KEY) makes real, billed calls;
+The model is chosen by settings: LLM_PROVIDER=openai (+ LLM_MODEL, LLM_API_KEY) makes real, billed calls, and
+only when LLM_ALLOW_BILLED_CALLS=true; without it the command exits with code 2 before building a client.
 LLM_PROVIDER=offline-heuristic runs a keyless rule-based stand-in for demos (not an AI model).
 """
 

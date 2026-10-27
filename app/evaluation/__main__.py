@@ -40,7 +40,7 @@ def main(argv: list[str] | None = None) -> int:
         result = run_evaluation("offline-heuristic", HeuristicLLMClient, approaches=approaches, case_ids=case_ids)
         out = args.out or ROOT / "evaluation_results" / "offline-heuristic"
     else:
-        from app.llm import LLMNotConfiguredError, build_llm_client
+        from app.llm import LLMNotConfiguredError, build_llm_client, check_llm_settings
 
         settings = get_settings()
         n_cases = len(case_ids) if case_ids else 10
@@ -56,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
             print("Refusing to make billed calls without --confirm-billed.", file=sys.stderr)
             return 2
         try:
-            build_llm_client(settings)
+            check_llm_settings(settings, billing_confirmed=True)  # --confirm-billed is the explicit opt-in here
         except LLMNotConfiguredError as exc:
             print(f"LLM is not configured: {exc}", file=sys.stderr)
             return 2
@@ -65,7 +65,8 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             print(f"Invalid investigation limits: {exc}", file=sys.stderr)
             return 2
-        result = run_evaluation("live", lambda: build_llm_client(settings), approaches=approaches, case_ids=case_ids,
+        result = run_evaluation("live", lambda: build_llm_client(settings, billing_confirmed=True),
+                                approaches=approaches, case_ids=case_ids,
                                 agent_config=agent_config, baseline_config=baseline_config, model_name=settings.llm_model)
         out = args.out or ROOT / "evaluation_results" / "live"
 

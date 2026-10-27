@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     llm_provider: str = ""  # "openai" is the only supported provider
     llm_model: str = ""
     llm_api_key: SecretStr | None = None
+    # Real providers are billed: no client is built, and no request is sent, unless this is explicitly true.
+    llm_allow_billed_calls: bool = False
     # Per-request timeout passed to the provider SDK. Headroom for slow responses, not a speed-up.
     llm_timeout_seconds: float = Field(default=120.0, gt=0, le=600)
     llm_max_output_tokens: int = Field(default=4000, ge=256, le=32000)

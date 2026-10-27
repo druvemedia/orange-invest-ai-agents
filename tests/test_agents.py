@@ -738,7 +738,8 @@ def test_environment_override_reaches_sdk_engine_and_plan(clean_env, monkeypatch
     from app.llm import build_llm_client
 
     monkeypatch.setenv("LLM_TIMEOUT_SECONDS", "200")
-    settings = Settings(_env_file=None, llm_provider="openai", llm_model="m", llm_api_key="sk-test-not-a-real-key")
+    settings = Settings(_env_file=None, llm_provider="openai", llm_model="m", llm_api_key="sk-test-not-a-real-key",
+                        llm_allow_billed_calls=True)
     config = AgentConfig.from_settings(settings)
     scope, _ = resolve_scope(ScopeOutput(**s.scope()), INC_2041, config)
     plan = OrchestratorAgent(llm=None, tools=build_evidence_tools(), config=config).plan_tasks(scope)

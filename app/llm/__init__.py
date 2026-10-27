@@ -6,10 +6,11 @@ implementation; ``ScriptedLLMClient`` returns canned responses for tests.
 
 from app.llm.client import LLMClient, LLMError, LLMErrorKind, LLMRequest, validate_output
 from app.llm.fake import ScriptedLLMClient
-from app.llm.factory import LLMNotConfiguredError, build_llm_client
+from app.llm.factory import BilledCallsNotAllowedError, LLMNotConfiguredError, build_llm_client, check_llm_settings
 from app.llm.openai_client import OpenAIClient
 
 __all__ = [
+    "BilledCallsNotAllowedError",
     "LLMClient",
     "LLMError",
     "LLMErrorKind",
@@ -18,5 +19,6 @@ __all__ = [
     "OpenAIClient",
     "ScriptedLLMClient",
     "build_llm_client",
+    "check_llm_settings",
     "validate_output",
 ]

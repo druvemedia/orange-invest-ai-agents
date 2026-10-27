@@ -16,7 +16,7 @@ def build_investigation_service(settings: Settings) -> InvestigationService:
     """Choose the model from settings. Without a usable model, submissions return 503; /health still works."""
     from app.agents import AgentConfig
     from app.evaluation.heuristic_model import HeuristicLLMClient
-    from app.llm import LLMNotConfiguredError, build_llm_client
+    from app.llm import BilledCallsNotAllowedError, LLMNotConfiguredError, build_llm_client, check_llm_settings
 
     limits = dict(max_active=settings.api_max_active_investigations)
     try:
@@ -26,7 +26,10 @@ def build_investigation_service(settings: Settings) -> InvestigationService:
     if settings.llm_provider.strip().lower() == "offline-heuristic":
         return InvestigationService(HeuristicLLMClient, model_label="offline-heuristic", agent_config=config, **limits)
     try:
-        build_llm_client(settings)  # validates settings; makes no request
+        check_llm_settings(settings)  # validates settings and the billing opt-in; builds no client
+    except BilledCallsNotAllowedError as exc:
+        reason = f"{exc} Or set LLM_PROVIDER=offline-heuristic for a keyless demo."
+        return InvestigationService(None, model_label="none", agent_config=config, unavailable_reason=reason, **limits)
     except LLMNotConfiguredError as exc:
         reason = (f"{exc} Configure LLM_PROVIDER=openai with LLM_MODEL and LLM_API_KEY, "
                   "or set LLM_PROVIDER=offline-heuristic for a keyless demo.")

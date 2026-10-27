@@ -164,7 +164,8 @@ def test_missing_configuration_is_reported_by_name(clean_env, fields, missing):
 
 
 def test_configured_settings_build_openai_client_without_exposing_key(clean_env):
-    settings = Settings(_env_file=None, llm_provider="OpenAI", llm_model="m", llm_api_key=FAKE_KEY)
+    settings = Settings(_env_file=None, llm_provider="OpenAI", llm_model="m", llm_api_key=FAKE_KEY,
+                        llm_allow_billed_calls=True)
 
     built = build_llm_client(settings)
 
